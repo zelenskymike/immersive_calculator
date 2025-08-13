@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Immersion Cooling TCO Calculator</title>
+    <meta name="title" content="Immersion Cooling TCO Calculator" />
+    <meta name="description" content="Calculate the Total Cost of Ownership for immersion cooling systems compared to traditional air cooling in data centers." />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tco-calculator.com/" />
+    <meta property="og:title" content="Immersion Cooling TCO Calculator" />
+    <meta property="og:description" content="Calculate the Total Cost of Ownership for immersion cooling systems compared to traditional air cooling in data centers." />
+    <meta property="og:image" content="/og-image.png" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://tco-calculator.com/" />
+    <meta property="twitter:title" content="Immersion Cooling TCO Calculator" />
+    <meta property="twitter:description" content="Calculate the Total Cost of Ownership for immersion cooling systems compared to traditional air cooling in data centers." />
+    <meta property="twitter:image" content="/og-image.png" />
+
+    <!-- Theme and appearance -->
+    <meta name="theme-color" content="#1976d2" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TCO Calculator" />
+    
+    <!-- Preconnect to API domain for performance -->
+    <link rel="preconnect" href="https://api.tco-calculator.com" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;600;700&display=swap" rel="stylesheet" />
+    
+    <!-- Progressive Web App -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Prevent FOUC -->
+    <style>
+      body {
+        margin: 0;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Oxygen',
+          'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #fafafa;
+      }
+      
+      /* RTL Support */
+      [dir="rtl"] body {
+        font-family: 'Cairo', 'Roboto', sans-serif;
+      }
+      
+      /* Initial loading state */
+      #root {
+        min-height: 100vh;
+      }
+      
+      .loading-splash {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+        color: white;
+      }
+      
+      .loading-splash .logo {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 24px;
+        animation: pulse 2s ease-in-out infinite alternate;
+      }
+      
+      .loading-splash .text {
+        font-size: 24px;
+        font-weight: 300;
+        margin-bottom: 16px;
+      }
+      
+      .loading-splash .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 1s ease-in-out infinite;
+      }
+      
+      @keyframes pulse {
+        from { opacity: 1; }
+        to { opacity: 0.7; }
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <!-- Fallback loading screen -->
+      <div class="loading-splash" id="loading-splash">
+        <div class="logo">📊</div>
+        <div class="text">TCO Calculator</div>
+        <div class="spinner"></div>
+      </div>
+    </div>
+    
+    <script>
+      // Remove loading splash when app loads
+      window.addEventListener('load', function() {
+        const splash = document.getElementById('loading-splash');
+        if (splash) {
+          setTimeout(() => {
+            splash.style.display = 'none';
+          }, 500);
+        }
+      });
+    </script>
+    
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
