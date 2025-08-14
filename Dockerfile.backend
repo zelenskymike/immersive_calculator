@@ -1,68 +1,61 @@
-# Multi-stage build for backend optimization
+# ---------- Base ----------
 FROM node:18-alpine AS base
-
-# Install dependencies only when needed
-FROM base AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat curl
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
-COPY packages/backend/package.json ./packages/backend/
-COPY packages/shared/package.json ./packages/shared/
-
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
-
-# Rebuild the source code only when needed
+# ---------- Build (dev deps, сборка) ----------
 FROM base AS builder
-WORKDIR /app
-
-# Copy package files and install all dependencies (including devDependencies)
-COPY package.json package-lock.json* ./
+# Копируем только файлы для резолва зависимостей (кэш слоя)
+COPY package.json package-lock.json ./
 COPY packages/backend/package.json ./packages/backend/
-COPY packages/shared/package.json ./packages/shared/
-
+COPY packages/shared/package.json  ./packages/shared/
+# Устанавливаем все deps для сборки
 RUN npm ci
 
-# Copy source code
+# Копируем исходники
 COPY packages/backend ./packages/backend
-COPY packages/shared ./packages/shared
+COPY packages/shared  ./packages/shared
 
-# Build shared package first
+# Build shared и backend
 WORKDIR /app/packages/shared
 RUN npm run build
 
-# Build backend
 WORKDIR /app/packages/backend
 RUN npm run build
 
-# Production image
+# ---------- Prod deps только для backend ----------
+FROM base AS prod-deps
+# Нужны манифесты для корректного вычисления графа зависимостей
+COPY package.json package-lock.json ./
+COPY packages/backend/package.json ./packages/backend/
+COPY packages/shared/package.json  ./packages/shared/
+# Ставим только prod-зависимости backend workspace
+# (npm v7+ поддерживает -w/--workspace)
+RUN npm ci --omit=dev -w packages/backend
+
+# ---------- Runtime ----------
 FROM base AS runner
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nodejs
+# Без root
+RUN addgroup --system --gid 1001 nodejs \
+ && adduser  --system --uid 1001 nodejs
 
-# Copy built application
-COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /app/packages/backend/dist ./packages/backend/dist
-COPY --from=builder --chown=nodejs:nodejs /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder --chown=nodejs:nodejs /app/packages/backend/package.json ./packages/backend/
+# Prod node_modules (только то, что нужно backend)
+COPY --from=prod-deps --chown=nodejs:nodejs /app/node_modules ./node_modules
 
-# Set up environment
+# Артефакты сборки
+COPY --from=builder  --chown=nodejs:nodejs /app/packages/backend/dist  ./packages/backend/dist
+COPY --from=builder  --chown=nodejs:nodejs /app/packages/shared/dist   ./packages/shared/dist
+COPY --from=builder  --chown=nodejs:nodejs /app/packages/backend/package.json ./packages/backend/
+
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Health check
+# Healthcheck (curl установлен в base)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3001/health || exit 1
 
-# Switch to nodejs user
 USER nodejs
-
 EXPOSE 3001
-
-# Start the application
 CMD ["node", "packages/backend/dist/server.js"]
