@@ -24,13 +24,10 @@ import { useI18n } from './i18n/useI18n';
 interface AppProps {}
 
 const App: React.FC<AppProps> = () => {
-  const { t, language, isRTL } = useI18n();
+  const { t, locale, isRTL } = useI18n();
   const { 
     isInitialized, 
-    initialize, 
-    theme,
-    currency,
-    locale 
+    initialize
   } = useAppStore();
 
   // Initialize application on mount
@@ -41,8 +38,8 @@ const App: React.FC<AppProps> = () => {
   // Set document direction based on language
   useEffect(() => {
     document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
-    document.documentElement.lang = language;
-  }, [isRTL, language]);
+    document.documentElement.lang = locale;
+  }, [isRTL, locale]);
 
   // Show loading spinner during app initialization
   if (!isInitialized) {
@@ -66,8 +63,7 @@ const App: React.FC<AppProps> = () => {
       <Helmet>
         <title>{t('app.title')}</title>
         <meta name="description" content={t('app.description')} />
-        <meta name="language" content={language} />
-        <meta name="currency" content={currency} />
+        <meta name="language" content={locale} />
         <meta name="locale" content={locale} />
         <link rel="canonical" href={window.location.origin} />
         
@@ -206,7 +202,7 @@ const App: React.FC<AppProps> = () => {
             fontFamily: 'monospace'
           }}
         >
-          v{__APP_VERSION__} • {import.meta.env.MODE} • {language.toUpperCase()} • {currency}
+          v{__APP_VERSION__} • {import.meta.env.MODE} • {locale.toUpperCase()}
         </Box>
       )}
     </ErrorBoundary>

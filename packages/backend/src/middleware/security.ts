@@ -5,7 +5,10 @@
 import { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import csrf from 'csurf';
+import DOMPurify from 'isomorphic-dompurify';
 import { body, param, query, validationResult, ValidationChain } from 'express-validator';
+import crypto from 'crypto';
 
 import { config } from '@/config/environment';
 import { redis } from '@/config/database';
@@ -373,4 +376,449 @@ export const logSensitiveOperation = (operation: string) => {
     
     next();
   };
+};
+
+// CSRF Protection middleware
+export const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    secure: config.server.nodeEnv === 'production',
+    sameSite: 'strict',
+    maxAge: 3600000, // 1 hour
+  },
+  ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
+  value: (req) => {
+    // Check multiple possible locations for CSRF token
+    return req.body._csrf || 
+           req.query._csrf || 
+           req.headers['csrf-token'] ||
+           req.headers['x-csrf-token'] ||
+           req.headers['x-xsrf-token'];
+  },
+});
+
+// CSRF token generation endpoint
+export const generateCSRFToken = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = req.csrfToken();
+    res.json({
+      success: true,
+      data: {
+        csrfToken: token,
+        expires: new Date(Date.now() + 3600000).toISOString(), // 1 hour
+      },
+    });
+  } catch (error) {
+    logger.error('CSRF token generation failed:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: ErrorCode.INTERNAL_ERROR,
+        message: 'Failed to generate CSRF token',
+      },
+    });
+  }
+};
+
+// XSS Sanitization middleware
+export const sanitizeInput = (req: Request, res: Response, next: NextFunction) => {
+  const sanitizeValue = (value: any): any => {
+    if (typeof value === 'string') {
+      // Basic XSS protection - sanitize HTML content
+      return DOMPurify.sanitize(value, {
+        ALLOWED_TAGS: [], // No HTML tags allowed
+        ALLOWED_ATTR: [], // No attributes allowed
+      });
+    } else if (Array.isArray(value)) {
+      return value.map(sanitizeValue);
+    } else if (typeof value === 'object' && value !== null) {
+      const sanitized: any = {};
+      for (const key in value) {
+        if (value.hasOwnProperty(key)) {
+          sanitized[key] = sanitizeValue(value[key]);
+        }
+      }
+      return sanitized;
+    }
+    return value;
+  };
+
+  // Sanitize request body
+  if (req.body) {
+    req.body = sanitizeValue(req.body);
+  }
+
+  // Sanitize query parameters
+  if (req.query) {
+    for (const key in req.query) {
+      if (req.query.hasOwnProperty(key)) {
+        req.query[key] = sanitizeValue(req.query[key]);
+      }
+    }
+  }
+
+  // Sanitize URL parameters
+  if (req.params) {
+    for (const key in req.params) {
+      if (req.params.hasOwnProperty(key)) {
+        req.params[key] = sanitizeValue(req.params[key]);
+      }
+    }
+  }
+
+  next();
+};
+
+// SQL Injection Protection middleware
+export const sqlInjectionProtection = (req: Request, res: Response, next: NextFunction) => {
+  const sqlInjectionPatterns = [
+    /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)/gi,
+    /('|(\\)|;|--|\*|=)/gi,
+    /(\bOR\b|\bAND\b).*[=<>]/gi,
+    /(INFORMATION_SCHEMA|SYSOBJECTS|SYSCOLUMNS)/gi,
+  ];
+
+  const checkForSQLInjection = (value: string): boolean => {
+    return sqlInjectionPatterns.some(pattern => pattern.test(value));
+  };
+
+  const checkValue = (obj: any, path = ''): boolean => {
+    if (typeof obj === 'string') {
+      if (checkForSQLInjection(obj)) {
+        logSecurityEvent('sql_injection_attempt', 'error', {
+          ip: req.ip,
+          path: req.path,
+          method: req.method,
+          suspiciousValue: obj,
+          fieldPath: path,
+        });
+        return true;
+      }
+    } else if (Array.isArray(obj)) {
+      return obj.some((item, index) => checkValue(item, `${path}[${index}]`));
+    } else if (typeof obj === 'object' && obj !== null) {
+      return Object.entries(obj).some(([key, value]) => 
+        checkValue(value, path ? `${path}.${key}` : key)
+      );
+    }
+    return false;
+  };
+
+  // Check all input sources
+  const sources = [
+    { data: req.body, name: 'body' },
+    { data: req.query, name: 'query' },
+    { data: req.params, name: 'params' },
+  ];
+
+  for (const source of sources) {
+    if (source.data && checkValue(source.data, source.name)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: ErrorCode.INVALID_INPUT,
+          message: 'Potentially malicious input detected',
+        },
+      });
+    }
+  }
+
+  next();
+};
+
+// Basic admin authentication middleware
+export const basicAdminAuth = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: ErrorCode.UNAUTHORIZED,
+        message: 'Authentication required',
+      },
+    });
+  }
+
+  const credentials = Buffer.from(authHeader.slice(6), 'base64').toString();
+  const [username, password] = credentials.split(':');
+
+  if (username !== config.admin.username || password !== config.admin.password) {
+    logSecurityEvent('admin_auth_failed', 'warn', {
+      ip: req.ip,
+      username,
+      path: req.path,
+    });
+
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: ErrorCode.UNAUTHORIZED,
+        message: 'Invalid credentials',
+      },
+    });
+  }
+
+  logSecurityEvent('admin_auth_success', 'info', {
+    ip: req.ip,
+    username,
+    path: req.path,
+  });
+
+  next();
+};
+
+// API key authentication middleware
+export const apiKeyAuth = (req: Request, res: Response, next: NextFunction) => {
+  const apiKey = req.headers['x-api-key'] as string;
+  
+  if (!apiKey) {
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: ErrorCode.UNAUTHORIZED,
+        message: 'API key required',
+      },
+    });
+  }
+
+  // Validate API key format (should be UUID v4)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(apiKey)) {
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: ErrorCode.UNAUTHORIZED,
+        message: 'Invalid API key format',
+      },
+    });
+  }
+
+  // In a real implementation, you would validate against a database
+  const validApiKeys = config.apiKeys || [];
+  if (!validApiKeys.includes(apiKey)) {
+    logSecurityEvent('invalid_api_key', 'warn', {
+      ip: req.ip,
+      apiKey: apiKey.substring(0, 8) + '...',
+      path: req.path,
+    });
+
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: ErrorCode.UNAUTHORIZED,
+        message: 'Invalid API key',
+      },
+    });
+  }
+
+  // Add API key info to request for logging
+  (req as any).apiKey = apiKey;
+  next();
+};
+
+// Request signing middleware for high-security operations
+export const requestSigningAuth = (req: Request, res: Response, next: NextFunction) => {
+  const signature = req.headers['x-request-signature'] as string;
+  const timestamp = req.headers['x-timestamp'] as string;
+  const nonce = req.headers['x-nonce'] as string;
+
+  if (!signature || !timestamp || !nonce) {
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: ErrorCode.UNAUTHORIZED,
+        message: 'Request signing headers required',
+      },
+    });
+  }
+
+  // Validate timestamp (prevent replay attacks)
+  const requestTime = parseInt(timestamp);
+  const currentTime = Date.now();
+  const timeDiff = Math.abs(currentTime - requestTime);
+
+  if (timeDiff > 300000) { // 5 minutes
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: ErrorCode.UNAUTHORIZED,
+        message: 'Request timestamp expired',
+      },
+    });
+  }
+
+  // Check nonce to prevent replay attacks (in production, store in Redis)
+  const nonceKey = `nonce:${nonce}`;
+  
+  redis.getClient().get(nonceKey).then(existingNonce => {
+    if (existingNonce) {
+      logSecurityEvent('replay_attack_attempt', 'error', {
+        ip: req.ip,
+        nonce,
+        timestamp,
+        path: req.path,
+      });
+
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: ErrorCode.UNAUTHORIZED,
+          message: 'Request replay detected',
+        },
+      });
+    }
+
+    // Store nonce with expiration
+    redis.getClient().setEx(nonceKey, 300, 'used'); // 5 minutes expiration
+
+    // Verify signature
+    const secret = config.security.requestSigningSecret;
+    const payload = `${req.method}:${req.originalUrl}:${JSON.stringify(req.body)}:${timestamp}:${nonce}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex');
+
+    if (signature !== expectedSignature) {
+      logSecurityEvent('invalid_request_signature', 'error', {
+        ip: req.ip,
+        path: req.path,
+        method: req.method,
+      });
+
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: ErrorCode.UNAUTHORIZED,
+          message: 'Invalid request signature',
+        },
+      });
+    }
+
+    next();
+  }).catch(error => {
+    logger.error('Nonce validation error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: ErrorCode.INTERNAL_ERROR,
+        message: 'Authentication service unavailable',
+      },
+    });
+  });
+};
+
+// Enhanced validation rules with security considerations
+export const enhancedValidationRules = {
+  ...validationRules,
+  
+  // Report format validation
+  reportFormat: () => body('format')
+    .isIn(['pdf', 'excel'])
+    .withMessage('Report format must be pdf or excel'),
+    
+  // Sanitized string validation
+  sanitizedString: (field: string, maxLength: number = 1000) => 
+    body(field)
+      .isString()
+      .isLength({ max: maxLength })
+      .trim()
+      .escape()
+      .withMessage(`${field} must be a string with maximum ${maxLength} characters`),
+      
+  // Safe HTML validation (for rich text fields)
+  safeHTML: (field: string) => 
+    body(field)
+      .optional()
+      .isString()
+      .customSanitizer((value) => {
+        return DOMPurify.sanitize(value, {
+          ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'u'],
+          ALLOWED_ATTR: [],
+        });
+      })
+      .withMessage(`${field} contains invalid HTML`),
+};
+
+// Security monitoring middleware
+export const securityMonitoring = (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  
+  // Add request ID for tracking
+  req.id = crypto.randomUUID();
+  res.setHeader('X-Request-ID', req.id);
+
+  // Monitor for suspicious patterns
+  const suspiciousPatterns = {
+    userAgent: /bot|crawler|spider|scraper/i,
+    path: /\.(php|asp|jsp|cgi)$/i,
+    queryParams: /script|alert|onerror|javascript/i,
+  };
+
+  let suspiciousActivity = false;
+  const suspiciousFlags: string[] = [];
+
+  // Check User-Agent
+  const userAgent = req.get('User-Agent') || '';
+  if (suspiciousPatterns.userAgent.test(userAgent)) {
+    suspiciousFlags.push('suspicious_user_agent');
+    suspiciousActivity = true;
+  }
+
+  // Check path
+  if (suspiciousPatterns.path.test(req.path)) {
+    suspiciousFlags.push('suspicious_path');
+    suspiciousActivity = true;
+  }
+
+  // Check query parameters
+  const queryString = JSON.stringify(req.query);
+  if (suspiciousPatterns.queryParams.test(queryString)) {
+    suspiciousFlags.push('suspicious_query');
+    suspiciousActivity = true;
+  }
+
+  if (suspiciousActivity) {
+    logSecurityEvent('suspicious_activity', 'warn', {
+      ip: req.ip,
+      path: req.path,
+      method: req.method,
+      userAgent,
+      flags: suspiciousFlags,
+      requestId: req.id,
+    });
+  }
+
+  // Log response time and status
+  res.on('finish', () => {
+    const responseTime = Date.now() - startTime;
+    
+    // Log slow requests
+    if (responseTime > 5000) { // 5 seconds
+      logSecurityEvent('slow_request', 'info', {
+        ip: req.ip,
+        path: req.path,
+        method: req.method,
+        responseTime,
+        statusCode: res.statusCode,
+        requestId: req.id,
+      });
+    }
+
+    // Log error responses
+    if (res.statusCode >= 400) {
+      logSecurityEvent('error_response', 'info', {
+        ip: req.ip,
+        path: req.path,
+        method: req.method,
+        statusCode: res.statusCode,
+        responseTime,
+        requestId: req.id,
+      });
+    }
+  });
+
+  next();
 };

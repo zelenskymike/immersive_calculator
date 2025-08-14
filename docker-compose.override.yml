@@ -1,0 +1,55 @@
+# Development overrides for docker-compose.yml
+# This file is automatically loaded when running docker-compose in development
+
+version: '3.8'
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=tco_calculator_dev
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=dev_password
+    volumes:
+      - ./data/postgres-dev:/var/lib/postgresql/data
+
+  redis:
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - ./data/redis-dev:/data
+
+  backend:
+    build:
+      target: development
+    volumes:
+      - ./packages/backend/src:/app/packages/backend/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/backend/package.json:/app/packages/backend/package.json
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+      - DB_NAME=tco_calculator_dev
+      - DB_PASSWORD=dev_password
+      - JWT_SECRET=dev_jwt_secret_key_not_for_production
+      - CORS_ORIGIN=http://localhost:3000
+    command: npm run dev
+    stdin_open: true
+    tty: true
+
+  frontend:
+    build:
+      target: development
+    volumes:
+      - ./packages/frontend/src:/app/packages/frontend/src
+      - ./packages/frontend/public:/app/packages/frontend/public
+      - ./packages/shared/src:/app/packages/shared/src
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+      - REACT_APP_ENVIRONMENT=development
+      - GENERATE_SOURCEMAP=true
+    command: npm run dev
+    ports:
+      - "3000:3000"

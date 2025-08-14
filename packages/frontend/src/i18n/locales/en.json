@@ -1,0 +1,401 @@
+{
+  "common": {
+    "select": "Select",
+    "next": "Next",
+    "previous": "Previous",
+    "calculate": "Calculate",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Information",
+    "required": "Required",
+    "optional": "Optional",
+    "yes": "Yes",
+    "no": "No",
+    "currency": "Currency",
+    "amount": "Amount",
+    "total": "Total",
+    "annual": "Annual",
+    "years": "Years",
+    "months": "Months",
+    "percentage": "Percentage",
+    "estimate": "Estimate",
+    "actual": "Actual",
+    "configuration": "Configuration",
+    "results": "Results",
+    "summary": "Summary",
+    "details": "Details",
+    "export": "Export",
+    "share": "Share",
+    "copy": "Copy",
+    "download": "Download",
+    "reset": "Reset"
+  },
+  "navigation": {
+    "home": "Home",
+    "calculator": "Calculator",
+    "about": "About",
+    "contact": "Contact",
+    "help": "Help",
+    "documentation": "Documentation",
+    "menu": "Menu",
+    "language": "Language",
+    "language_selector": "Select Language"
+  },
+  "calculator": {
+    "title": "Immersion Cooling TCO Calculator",
+    "subtitle": "Compare total cost of ownership between air cooling and immersion cooling systems",
+    "description": "Analyze the financial benefits of immersion cooling technology for your data center deployment.",
+    "reset": "Reset Configuration",
+    "confirm_reset": "Are you sure you want to reset all configuration? This action cannot be undone.",
+    "calculating": "Calculating TCO Analysis...",
+    "calculating_description": "This may take a few moments to process your configuration.",
+    "progress": {
+      "completion": "Progress: {percentage}% complete (Step {current} of {total})"
+    },
+    "navigation": {
+      "previous": "Previous",
+      "next": "Next",
+      "calculate": "Calculate TCO",
+      "step_count": "Step {current} of {total}"
+    },
+    "shortcuts": {
+      "help": "Use Ctrl+→ (Next), Ctrl+← (Previous), Ctrl+R (Reset) for keyboard navigation"
+    },
+    "validation": {
+      "errors_found": "Please correct the following errors:",
+      "warnings_found": "Please review the following warnings:"
+    },
+    "steps": {
+      "air_cooling": {
+        "title": "Air Cooling Configuration",
+        "description": "Configure your traditional air cooling system parameters"
+      },
+      "immersion_cooling": {
+        "title": "Immersion Cooling Configuration", 
+        "description": "Configure your immersion cooling system parameters"
+      },
+      "financial": {
+        "title": "Financial Parameters",
+        "description": "Set financial analysis parameters and regional settings"
+      },
+      "review": {
+        "title": "Review & Calculate",
+        "description": "Review your configuration and run the TCO analysis"
+      },
+      "results": {
+        "title": "TCO Analysis Results",
+        "description": "View your comprehensive cost analysis and savings projections"
+      }
+    },
+    "air_cooling": {
+      "title": "Air Cooling System Configuration",
+      "description": "Configure the parameters for your traditional air cooling data center infrastructure. This includes rack specifications, power distribution, and HVAC systems.",
+      "input_method": {
+        "title": "Configuration Method",
+        "rack_count": "Rack Count Method",
+        "rack_count_desc": "Specify the number of racks and power per rack",
+        "total_power": "Total Power Method", 
+        "total_power_desc": "Specify the total power consumption directly"
+      },
+      "rack_configuration": {
+        "title": "Rack Configuration"
+      },
+      "rack_type": {
+        "title": "Rack Type Selection"
+      },
+      "rack_count": {
+        "label": "Number of Racks",
+        "helper": "Total number of 42U server racks in your deployment"
+      },
+      "power_per_rack": {
+        "label": "Power per Rack (kW)",
+        "helper": "Average power consumption per rack including servers and networking"
+      },
+      "total_power_config": {
+        "title": "Total Power Configuration"
+      },
+      "total_power": {
+        "label": "Total Power Consumption (kW)",
+        "helper": "Total power consumption of all IT equipment"
+      },
+      "advanced": {
+        "title": "Advanced Configuration"
+      },
+      "hvac_efficiency": {
+        "label": "HVAC System Efficiency",
+        "tooltip": "Efficiency of your cooling system (0.5-0.95). Higher values indicate more efficient cooling systems."
+      },
+      "power_efficiency": {
+        "label": "Power Distribution Efficiency", 
+        "tooltip": "Efficiency of UPS and power distribution systems (0.8-0.98). Includes losses in transformers, UPS, and PDUs."
+      },
+      "space_efficiency": {
+        "label": "Space Utilization Efficiency",
+        "tooltip": "Percentage of data center space used for IT equipment (0.6-0.95). Accounts for aisles, maintenance space, and infrastructure."
+      }
+    },
+    "immersion_cooling": {
+      "title": "Immersion Cooling System Configuration",
+      "description": "Configure the parameters for your immersion cooling deployment. Immersion cooling provides superior energy efficiency by directly cooling servers in dielectric fluid.",
+      "input_method": {
+        "title": "Configuration Method",
+        "auto_optimize": "Auto-Optimize Configuration",
+        "auto_optimize_desc": "Automatically determine optimal tank configuration for your power requirements",
+        "manual_config": "Manual Configuration",
+        "manual_config_desc": "Manually specify tank sizes, quantities, and power densities"
+      },
+      "auto_optimize": {
+        "title": "Auto-Optimization Configuration"
+      },
+      "target_power": {
+        "label": "Target Power Capacity (kW)",
+        "helper": "Total power capacity you want to achieve with immersion cooling"
+      },
+      "optimize_button": "Optimize Configuration",
+      "optimization_complete": "Optimization complete! Review the recommended configuration below.",
+      "apply_optimization": "Apply Optimization",
+      "manual_config": {
+        "title": "Manual Tank Configuration"
+      },
+      "add_tank": "Add Tank Configuration",
+      "tank": "Tank",
+      "tank_size": {
+        "label": "Tank Size"
+      },
+      "quantity": {
+        "label": "Quantity"
+      },
+      "power_density": {
+        "label": "Power Density (kW/U)",
+        "helper": "Power consumption per rack unit (1U = 1.75 inches)"
+      },
+      "no_tanks_configured": "No tanks configured yet. Click 'Add Tank Configuration' to get started.",
+      "system_config": {
+        "title": "System Configuration"
+      },
+      "coolant_type": {
+        "label": "Coolant Type"
+      },
+      "advanced": {
+        "title": "Advanced System Parameters"
+      },
+      "pumping_efficiency": {
+        "label": "Pumping System Efficiency",
+        "tooltip": "Efficiency of coolant circulation pumps (0.8-0.98). Higher efficiency reduces parasitic power consumption."
+      },
+      "heat_exchanger_efficiency": {
+        "label": "Heat Exchanger Efficiency", 
+        "tooltip": "Efficiency of heat rejection system (0.85-0.98). Determines how effectively heat is removed from the coolant."
+      },
+      "optimization_results": "Optimization Results"
+    },
+    "financial": {
+      "title": "Financial Analysis Parameters",
+      "description": "Configure the financial parameters for your TCO analysis including regional costs, analysis period, and economic assumptions.",
+      "regional": {
+        "title": "Regional Settings"
+      },
+      "region": {
+        "label": "Geographic Region"
+      },
+      "currency": {
+        "label": "Currency"
+      },
+      "use_custom_rates": {
+        "label": "Use Custom Cost Rates"
+      },
+      "energy_cost": {
+        "label": "Energy Cost per kWh",
+        "helper": "Local electricity cost including demand charges and taxes"
+      },
+      "labor_cost": {
+        "label": "Labor Cost per Hour",
+        "helper": "Fully-loaded cost for technical staff including benefits"
+      },
+      "analysis": {
+        "title": "Analysis Parameters"
+      },
+      "analysis_years": {
+        "label": "Analysis Period (Years)",
+        "helper": "Time horizon for TCO analysis (typically 3-7 years)"
+      },
+      "discount_rate": {
+        "label": "Discount Rate (%)",
+        "helper": "Corporate discount rate for NPV calculations"
+      },
+      "escalation": {
+        "title": "Annual Escalation Rates"
+      },
+      "energy_escalation": {
+        "label": "Energy Cost Escalation",
+        "tooltip": "Annual rate of increase for energy costs (typically 2-4%)"
+      },
+      "maintenance_escalation": {
+        "label": "Maintenance Cost Escalation",
+        "tooltip": "Annual rate of increase for maintenance costs (typically 2-3%)"
+      },
+      "preview": {
+        "title": "Financial Preview"
+      }
+    },
+    "preview": {
+      "title": "Configuration Preview",
+      "total_power": "Total Power",
+      "hvac_power": "HVAC Power",
+      "servers": "Servers",
+      "total_tanks": "Total Tanks", 
+      "coolant_volume": "Coolant Volume",
+      "estimated_capex": "Estimated CAPEX",
+      "estimated_racks": "Estimated racks needed: {count}",
+      "configure_to_see_preview": "Complete the configuration to see live preview"
+    },
+    "help": {
+      "air_cooling": {
+        "title": "Air Cooling Help",
+        "description": "Get help with configuring air cooling parameters"
+      },
+      "immersion_cooling": {
+        "title": "Immersion Cooling Help", 
+        "description": "Get help with configuring immersion cooling parameters"
+      },
+      "financial": {
+        "title": "Financial Parameters Help",
+        "description": "Get help with financial analysis settings"
+      }
+    },
+    "results": {
+      "title": "TCO Analysis Results",
+      "description": "Comprehensive analysis comparing air cooling vs immersion cooling total cost of ownership"
+    }
+  },
+  "results": {
+    "summary": {
+      "total_savings": "Total TCO Savings",
+      "roi": "Return on Investment",
+      "payback_period": "Payback Period",
+      "energy_efficiency": "Energy Efficiency Gain",
+      "over_years": "Over {years} years"
+    },
+    "tabs": {
+      "summary": "Executive Summary",
+      "charts": "Charts & Analysis",
+      "environmental": "Environmental Impact",
+      "breakdown": "Detailed Breakdown"
+    },
+    "financial": {
+      "capex_savings": "CAPEX Savings",
+      "opex_savings": "5-Year OPEX Savings", 
+      "npv_savings": "Net Present Value (NPV)",
+      "air_cooling_pue": "Air Cooling PUE",
+      "immersion_cooling_pue": "Immersion Cooling PUE"
+    },
+    "environmental": {
+      "title": "Environmental Benefits",
+      "description": "Immersion cooling provides significant environmental improvements through energy efficiency.",
+      "carbon_savings": "Annual Carbon Savings",
+      "energy_savings": "Annual Energy Savings", 
+      "water_savings": "Water Savings",
+      "carbon_equivalent": "This carbon footprint reduction is equivalent to removing approximately {cars} cars from the road annually."
+    },
+    "breakdown": {
+      "capex": "CAPEX Breakdown",
+      "opex": "Annual OPEX Analysis",
+      "air_cooling_system": "Air Cooling System",
+      "immersion_cooling_system": "Immersion Cooling System",
+      "equipment": "Equipment",
+      "installation": "Installation", 
+      "infrastructure": "Infrastructure",
+      "coolant": "Coolant",
+      "energy": "Energy",
+      "maintenance": "Maintenance",
+      "labor": "Labor"
+    },
+    "charts": {
+      "tco_progression": "Total Cost of Ownership Progression",
+      "cost_categories": "Cost Category Comparison",
+      "pue_comparison": "Power Usage Effectiveness (PUE) Comparison"
+    },
+    "export": {
+      "pdf": "Export PDF Report",
+      "excel": "Export Excel Report", 
+      "share": "Share Results"
+    }
+  },
+  "reports": {
+    "generating": "Generating report...",
+    "generated": "Report generated successfully",
+    "error": "Failed to generate report",
+    "download_ready": "Your report is ready for download",
+    "pdf_report": "PDF Report",
+    "excel_report": "Excel Report"
+  },
+  "sharing": {
+    "title": "Share TCO Analysis",
+    "description": "Share your TCO analysis results with colleagues and stakeholders",
+    "generate_link": "Generate Shareable Link",
+    "copy_link": "Copy Link",
+    "link_copied": "Link copied to clipboard",
+    "link_expires": "Link expires in 90 days",
+    "email_subject": "TCO Analysis: Immersion vs Air Cooling",
+    "email_body": "Please review the attached TCO analysis comparing immersion cooling vs air cooling systems."
+  },
+  "errors": {
+    "validation": {
+      "required_field": "This field is required",
+      "invalid_number": "Please enter a valid number",
+      "invalid_range": "Value must be between {min} and {max}",
+      "invalid_email": "Please enter a valid email address",
+      "invalid_currency": "Invalid currency code"
+    },
+    "calculation": {
+      "insufficient_data": "Insufficient data for calculation",
+      "invalid_configuration": "Invalid equipment configuration", 
+      "calculation_failed": "Calculation processing failed",
+      "timeout": "Calculation timeout - please try again"
+    },
+    "network": {
+      "connection_error": "Network connection error",
+      "server_error": "Server error - please try again later",
+      "timeout": "Request timeout - please check your connection"
+    },
+    "session": {
+      "expired": "Your session has expired",
+      "not_found": "Session not found",
+      "invalid_token": "Invalid session token"
+    }
+  },
+  "footer": {
+    "copyright": "© 2024 TCO Calculator. All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "contact": "Contact Us",
+    "resources": "Resources",
+    "api_docs": "API Documentation",
+    "examples": "Examples",
+    "legal": "Legal",
+    "cookies": "Cookie Policy",
+    "support": "Support",
+    "feedback": "Feedback",
+    "report_issue": "Report Issue",
+    "follow_us": "Follow Us",
+    "description": "Calculate and compare the total cost of ownership between traditional air cooling and immersion cooling systems for data centers with comprehensive financial analysis.",
+    "last_updated": "Last Updated",
+    "built_with_love": "Built with love"
+  },
+  "meta": {
+    "title": "Immersion Cooling TCO Calculator - Data Center Cost Analysis",
+    "description": "Calculate and compare the total cost of ownership between traditional air cooling and immersion cooling systems for data centers.",
+    "keywords": "immersion cooling, data center, TCO, total cost of ownership, air cooling, energy efficiency, PUE"
+  },
+  "app": {
+    "title": "Immersion Cooling TCO Calculator",
+    "description": "Calculate and compare the total cost of ownership between traditional air cooling and immersion cooling systems for data centers."
+  }
+}

@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+  # Database services
+  postgres:
+    image: postgres:15-alpine
+    container_name: tco-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-tco_calculator}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - tco-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-tco_calculator}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: tco-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - tco-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  # Application services
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: runner
+    container_name: tco-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3001
+      
+      # Database configuration
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-tco_calculator}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_POOL_MIN: ${DB_POOL_MIN:-5}
+      DB_POOL_MAX: ${DB_POOL_MAX:-20}
+      
+      # Redis configuration
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-10}
+      
+      # Application settings
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      
+      # Monitoring
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+    volumes:
+      - backend_logs:/app/logs
+      - backend_uploads:/app/uploads
+    ports:
+      - "3001:3001"
+    networks:
+      - tco-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: runner
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3001}
+        REACT_APP_ENVIRONMENT: ${NODE_ENV:-production}
+    container_name: tco-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - tco-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Monitoring and utilities
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:0.10.0
+    container_name: tco-nginx-exporter
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    command:
+      - '-nginx.scrape-uri=http://frontend:80/nginx_status'
+    ports:
+      - "9113:9113"
+    networks:
+      - tco-network
+    profiles:
+      - monitoring
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.12.0
+    container_name: tco-postgres-exporter
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password}@postgres:5432/${DB_NAME:-tco_calculator}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - tco-network
+    profiles:
+      - monitoring
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: tco-redis-exporter
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - "9121:9121"
+    networks:
+      - tco-network
+    profiles:
+      - monitoring
+
+# Networks
+networks:
+  tco-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}/postgres
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}/redis
+  backend_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOGS_PATH:-./logs}/backend
+  backend_uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${UPLOADS_PATH:-./uploads}
