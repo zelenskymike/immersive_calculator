@@ -1,77 +1,87 @@
 {
-  "name": "immersion-cooling-tco-calculator",
+  "name": "tco-calculator-monorepo",
   "version": "1.0.0",
-  "description": "Total Cost of Ownership calculator for immersion cooling systems comparison with air cooling in data centers",
+  "description": "Immersion cooling TCO calculator with comprehensive testing suite",
   "private": true,
   "workspaces": [
-    "packages/frontend",
-    "packages/backend",
-    "packages/shared"
+    "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "npm run dev --workspace=packages/backend",
-    "dev:frontend": "npm run dev --workspace=packages/frontend",
+    "bootstrap": "npm install && npm run build:shared",
     "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
-    "build:shared": "npm run build --workspace=packages/shared",
-    "build:backend": "npm run build --workspace=packages/backend", 
-    "build:frontend": "npm run build --workspace=packages/frontend",
-    "start": "npm run start --workspace=packages/backend",
-    "test": "npm run test --workspace=packages/shared && npm run test --workspace=packages/backend && npm run test --workspace=packages/frontend",
-    "test:coverage": "npm run test:coverage --workspace=packages/backend && npm run test:coverage --workspace=packages/frontend",
-    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
-    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
-    "type-check": "npm run type-check --workspace=packages/shared && npm run type-check --workspace=packages/backend && npm run type-check --workspace=packages/frontend",
-    "db:migrate": "npm run db:migrate --workspace=packages/backend",
-    "db:seed": "npm run db:seed --workspace=packages/backend",
-    "db:reset": "npm run db:reset --workspace=packages/backend",
+    "build:shared": "cd packages/shared && npm run build",
+    "build:backend": "cd packages/backend && npm run build",
+    "build:frontend": "cd packages/frontend && npm run build",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd packages/backend && npm run dev",
+    "dev:frontend": "cd packages/frontend && npm run dev",
+    "test": "./scripts/test-runner.sh --suite all",
+    "test:unit": "./scripts/test-runner.sh --suite unit",
+    "test:integration": "./scripts/test-runner.sh --suite integration",
+    "test:e2e": "./scripts/test-runner.sh --suite e2e",
+    "test:performance": "./scripts/test-runner.sh --suite performance",
+    "test:security": "./scripts/test-runner.sh --suite security",
+    "test:accessibility": "./scripts/test-runner.sh --suite accessibility",
+    "test:load": "./scripts/test-runner.sh --suite load",
+    "test:coverage": "npm run test:unit && npm run coverage:merge && npm run coverage:report",
+    "coverage:merge": "node scripts/merge-coverage.js",
+    "coverage:report": "nyc report --reporter=html --reporter=text --reporter=lcov",
+    "lint": "concurrently \"npm run lint:backend\" \"npm run lint:frontend\" \"npm run lint:shared\"",
+    "lint:backend": "cd packages/backend && npm run lint",
+    "lint:frontend": "cd packages/frontend && npm run lint",
+    "lint:shared": "cd packages/shared && npm run lint",
+    "lint:fix": "concurrently \"npm run lint:backend -- --fix\" \"npm run lint:frontend -- --fix\" \"npm run lint:shared -- --fix\"",
+    "type-check": "concurrently \"npm run type-check:backend\" \"npm run type-check:frontend\" \"npm run type-check:shared\"",
+    "type-check:backend": "cd packages/backend && npm run type-check",
+    "type-check:frontend": "cd packages/frontend && npm run type-check",
+    "type-check:shared": "cd packages/shared && npm run type-check",
     "docker:build": "docker-compose build",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f"
+    "docker:test": "docker-compose -f docker-compose.test.yml up --abort-on-container-exit",
+    "clean": "npm run clean:build && npm run clean:coverage && npm run clean:reports",
+    "clean:build": "rm -rf packages/*/dist packages/*/build",
+    "clean:coverage": "rm -rf coverage test-results",
+    "clean:reports": "rm -rf reports playwright-report",
+    "audit:security": "npm audit --audit-level=moderate",
+    "audit:licenses": "license-checker --summary",
+    "precommit": "npm run lint && npm run type-check && npm run test:unit",
+    "prepare": "husky install",
+    "release": "standard-version",
+    "deploy:staging": "npm run build && npm run test && echo 'Deploy to staging...'",
+    "deploy:production": "npm run build && npm run test && echo 'Deploy to production...'"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
+    "@playwright/test": "^1.41.0",
+    "@axe-core/playwright": "^4.8.3",
+    "@types/node": "^20.11.20",
     "concurrently": "^8.2.2",
-    "eslint": "^8.56.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-import": "^2.29.1",
-    "eslint-plugin-jsx-a11y": "^6.8.0",
-    "eslint-plugin-react": "^7.33.2",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "husky": "^8.0.3",
-    "lint-staged": "^15.2.2",
-    "prettier": "^3.2.5",
+    "cross-env": "^7.0.3",
+    "husky": "^9.0.10",
+    "license-checker": "^25.0.1",
+    "nyc": "^15.1.0",
+    "standard-version": "^9.5.0",
     "typescript": "^5.3.3"
-  },
-  "lint-staged": {
-    "*.{ts,tsx,js,jsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,yml,yaml}": [
-      "prettier --write"
-    ]
-  },
-  "husky": {
-    "hooks": {
-      "pre-commit": "lint-staged",
-      "pre-push": "npm run type-check && npm run test"
-    }
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/company/tco-calculator.git"
+  },
   "keywords": [
-    "tco-calculator",
+    "tco",
+    "calculator",
     "immersion-cooling",
-    "air-cooling",
     "data-center",
-    "cost-analysis",
-    "financial-calculator"
+    "energy-efficiency"
   ],
-  "author": "TCO Calculator Team",
-  "license": "MIT"
+  "author": "Your Company",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/company/tco-calculator/issues"
+  },
+  "homepage": "https://github.com/company/tco-calculator#readme"
 }

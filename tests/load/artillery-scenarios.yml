@@ -1,0 +1,391 @@
+# Artillery Load Testing Configuration for TCO Calculator
+# Advanced load testing scenarios with detailed performance metrics
+
+config:
+  target: 'http://localhost:3001'
+  http:
+    timeout: 30
+    pool: 10 # connection pool size
+    maxSockets: 10
+  phases:
+    # Warm-up phase
+    - duration: 60
+      arrivalRate: 1
+      name: "Warm-up"
+    
+    # Ramp-up phase  
+    - duration: 300
+      arrivalRate: 2
+      rampTo: 10
+      name: "Ramp-up"
+    
+    # Sustained load phase
+    - duration: 600
+      arrivalRate: 10
+      name: "Sustained Load"
+    
+    # Peak load phase
+    - duration: 300
+      arrivalRate: 10
+      rampTo: 25
+      name: "Peak Load"
+    
+    # Spike test
+    - duration: 60
+      arrivalRate: 50
+      name: "Traffic Spike"
+    
+    # Cool-down phase
+    - duration: 180
+      arrivalRate: 25
+      rampTo: 1
+      name: "Cool-down"
+
+  # Performance metrics and monitoring
+  metrics:
+    - name: "calculation_duration"
+      unit: "milliseconds"
+    - name: "validation_errors" 
+      unit: "count"
+    - name: "memory_usage"
+      unit: "megabytes"
+    - name: "cpu_usage"
+      unit: "percent"
+
+  # Payload definitions
+  payload:
+    # Small data center configuration (40% of traffic)
+    - path: "./test-data/small-datacenter.json"
+      fields:
+        - "air_cooling"
+        - "immersion_cooling"
+        - "financial"
+      skipHeader: true
+      
+    # Medium data center configuration (35% of traffic)  
+    - path: "./test-data/medium-datacenter.json"
+      fields:
+        - "air_cooling"
+        - "immersion_cooling" 
+        - "financial"
+      skipHeader: true
+      
+    # Large data center configuration (20% of traffic)
+    - path: "./test-data/large-datacenter.json"
+      fields:
+        - "air_cooling"
+        - "immersion_cooling"
+        - "financial" 
+      skipHeader: true
+      
+    # Complex configuration (5% of traffic)
+    - path: "./test-data/complex-datacenter.json"
+      fields:
+        - "air_cooling"
+        - "immersion_cooling"
+        - "financial"
+      skipHeader: true
+
+  # Variables for dynamic testing
+  variables:
+    currencies:
+      - "USD"
+      - "EUR"
+      - "SAR" 
+      - "AED"
+    regions:
+      - "US"
+      - "EU"
+      - "ME"
+    rack_counts:
+      - 5
+      - 10
+      - 25
+      - 50
+      - 100
+      - 200
+    power_levels:
+      - 10
+      - 15
+      - 20
+      - 25
+      - 30
+
+  # Custom functions for advanced scenarios
+  processor: "./test-processors/calculation-processor.js"
+
+# Test scenarios
+scenarios:
+  # Primary calculation workflow test
+  - name: "Full Calculation Workflow"
+    weight: 60
+    flow:
+      # Health check
+      - get:
+          url: "/api/v1/health"
+          capture:
+            - json: "$.status"
+              as: "health_status"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "status"
+
+      # Get configuration defaults
+      - get:
+          url: "/api/v1/config/defaults"
+          capture:
+            - json: "$.currencies"
+              as: "available_currencies"
+            - json: "$.regions"
+              as: "available_regions"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # Configuration validation
+      - post:
+          url: "/api/v1/calculations/validate"
+          beforeRequest: "setCalculationPayload"
+          json:
+            configuration:
+              air_cooling:
+                input_method: "rack_count"
+                rack_count: "{{ rack_counts[$randomInt(0, 4)] }}"
+                power_per_rack_kw: "{{ power_levels[$randomInt(0, 4)] }}"
+                rack_type: "42U_STANDARD"
+              immersion_cooling:
+                input_method: "auto_optimize"
+                target_power_kw: "{{ $randomInt(100, 1000) }}"
+                coolant_type: "synthetic"
+              financial:
+                analysis_years: "{{ $randomInt(3, 10) }}"
+                discount_rate: "{{ $randomNumber(0.05, 0.20) }}"
+                currency: "{{ currencies[$randomInt(0, 3)] }}"
+                region: "{{ regions[$randomInt(0, 2)] }}"
+          capture:
+            - json: "$.valid"
+              as: "validation_result"
+            - json: "$.errors"
+              as: "validation_errors"
+          expect:
+            - statusCode: 200
+            - hasProperty: "valid"
+
+      # TCO Calculation (only if validation passed)
+      - post:
+          url: "/api/v1/calculations/calculate"
+          ifTrue: "{{ validation_result }}"
+          beforeRequest: "logCalculationStart"
+          afterResponse: "logCalculationEnd"
+          json:
+            configuration: "{{ calculation_config }}"
+          capture:
+            - json: "$.calculation_id"
+              as: "calc_id"
+            - json: "$.summary.total_tco_savings_5yr"
+              as: "total_savings"
+            - json: "$.summary.roi_percent"
+              as: "roi"
+            - json: "$.configuration_hash"
+              as: "config_hash"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "summary"
+            - hasProperty: "breakdown"
+            - hasProperty: "charts"
+            - hasProperty: "environmental"
+
+      # Retrieve calculation (caching test)
+      - get:
+          url: "/api/v1/calculations/{{ calc_id }}"
+          ifTrue: "{{ calc_id }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "calculation_id"
+
+      # Think time between operations
+      - think: "{{ $randomInt(1, 5) }}"
+
+  # Sharing functionality test
+  - name: "Calculation Sharing"
+    weight: 15
+    flow:
+      # Create a calculation first
+      - post:
+          url: "/api/v1/calculations/calculate"
+          json:
+            configuration:
+              air_cooling:
+                input_method: "rack_count"
+                rack_count: 20
+                power_per_rack_kw: 15
+              immersion_cooling:
+                input_method: "auto_optimize"
+                target_power_kw: 300
+              financial:
+                analysis_years: 5
+                currency: "USD"
+                region: "US"
+          capture:
+            - json: "$.calculation_id"
+              as: "calc_id"
+          expect:
+            - statusCode: 200
+
+      # Create shareable link
+      - post:
+          url: "/api/v1/sharing/create"
+          json:
+            calculation_id: "{{ calc_id }}"
+          capture:
+            - json: "$.share_id"
+              as: "share_id"
+            - json: "$.share_url"
+              as: "share_url"
+          expect:
+            - statusCode: 200
+            - hasProperty: "share_id"
+            - hasProperty: "share_url"
+
+      # Access shared calculation
+      - get:
+          url: "/api/v1/sharing/{{ share_id }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "summary"
+
+      - think: "{{ $randomInt(2, 8) }}"
+
+  # Concurrent user simulation
+  - name: "Concurrent Complex Calculations"
+    weight: 20
+    flow:
+      # Multiple complex calculations in parallel
+      - parallel:
+          - post:
+              url: "/api/v1/calculations/calculate"
+              json:
+                configuration:
+                  air_cooling:
+                    input_method: "rack_count"
+                    rack_count: 100
+                    power_per_rack_kw: 25
+                  immersion_cooling:
+                    input_method: "manual_config"
+                    tank_configurations:
+                      - size: "23U"
+                        quantity: 20
+                        power_density_kw_per_u: 2.5
+                      - size: "20U"
+                        quantity: 15
+                        power_density_kw_per_u: 2.0
+                  financial:
+                    analysis_years: 10
+                    currency: "EUR"
+                    region: "EU"
+              
+          - post:
+              url: "/api/v1/calculations/calculate"
+              json:
+                configuration:
+                  air_cooling:
+                    input_method: "total_power"
+                    total_power_kw: 5000
+                  immersion_cooling:
+                    input_method: "auto_optimize"
+                    target_power_kw: 5000
+                  financial:
+                    analysis_years: 7
+                    currency: "SAR"
+                    region: "ME"
+
+      - think: "{{ $randomInt(3, 10) }}"
+
+  # Error handling and edge cases
+  - name: "Edge Cases and Error Handling"
+    weight: 5
+    flow:
+      # Invalid configuration test
+      - post:
+          url: "/api/v1/calculations/validate"
+          json:
+            configuration:
+              air_cooling:
+                input_method: "rack_count"
+                rack_count: -5  # Invalid negative value
+                power_per_rack_kw: 1000  # Invalid high value
+              immersion_cooling:
+                input_method: "auto_optimize"
+                target_power_kw: -100  # Invalid negative value
+              financial:
+                analysis_years: 25  # Invalid high value
+                currency: "INVALID"  # Invalid currency
+          expect:
+            - statusCode: 400
+
+      # Malformed JSON test
+      - post:
+          url: "/api/v1/calculations/calculate"
+          body: '{"invalid": json}'
+          headers:
+            Content-Type: "application/json"
+          expect:
+            - statusCode: 400
+
+      # Non-existent calculation retrieval
+      - get:
+          url: "/api/v1/calculations/non-existent-id"
+          expect:
+            - statusCode: 404
+
+      # Non-existent share access
+      - get:
+          url: "/api/v1/sharing/non-existent-share"
+          expect:
+            - statusCode: 404
+
+      - think: 2
+
+# Custom hooks for advanced monitoring
+before:
+  flow:
+    - log: "Starting TCO Calculator load test..."
+
+after:
+  flow:
+    - log: "Load test completed. Analyzing results..."
+
+# Performance expectations and SLA
+expect:
+  # Response time requirements
+  p95: 2000  # 95th percentile under 2 seconds
+  p99: 5000  # 99th percentile under 5 seconds
+  median: 1000  # Median under 1 second
+
+  # Error rate requirements  
+  maxErrorRate: 5  # Maximum 5% error rate
+  
+  # Throughput requirements
+  minThoughput: 10  # Minimum 10 requests per second
+
+# Reporting configuration
+reporting:
+  # Custom metrics
+  - type: "json"
+    path: "./test-results/artillery-results.json"
+  
+  - type: "html"  
+    path: "./test-results/artillery-report.html"
+    
+  # Real-time monitoring
+  - type: "datadog"
+    apiKey: "{{ $env.DATADOG_API_KEY }}"
+    tags:
+      - "environment:test"
+      - "service:tco-calculator"
+      
+  # Custom dashboard
+  - type: "custom"
+    url: "http://localhost:3000/metrics/artillery"

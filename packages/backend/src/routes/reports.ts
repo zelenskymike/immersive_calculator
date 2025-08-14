@@ -94,7 +94,7 @@ router.post('/reports/generate',
       let filename: string;
 
       if (format === 'pdf') {
-        reportPath = await generatePDFReport(
+        reportPath = await generatePDFReportWithCharts(
           reportId,
           results,
           configuration,
@@ -661,21 +661,91 @@ function getReportCSS(): string {
 }
 
 /**
- * Generate charts HTML for PDF
+ * Generate charts HTML for PDF with embedded chart data
  */
 function generateChartsHTML(results: CalculationResults): string {
-  // This would generate Chart.js charts for PDF inclusion
+  const { summary, breakdown, timeline } = results;
+  
+  // Chart data configurations
+  const tcoProgressionData = generateTCOProgressionData(timeline);
+  const pueComparisonData = generatePUEComparisonData(summary);
+  const costBreakdownData = generateCostBreakdownData(breakdown);
+  
   return `
     <section class="charts-section">
       <h2>Visual Analysis</h2>
       <div class="charts-grid">
         <div class="chart-container">
-          <canvas id="tcoProgressionChart" width="400" height="200"></canvas>
+          <h3>TCO Progression Over Time</h3>
+          <canvas id="tcoProgressionChart" width="800" height="400"></canvas>
         </div>
         <div class="chart-container">
-          <canvas id="pueComparisonChart" width="400" height="200"></canvas>
+          <h3>PUE Comparison</h3>
+          <canvas id="pueComparisonChart" width="800" height="400"></canvas>
+        </div>
+        <div class="chart-container">
+          <h3>Cost Breakdown</h3>
+          <canvas id="costBreakdownChart" width="800" height="400"></canvas>
         </div>
       </div>
+      
+      <script>
+        // Chart.js configuration and rendering
+        const ctx1 = document.getElementById('tcoProgressionChart').getContext('2d');
+        new Chart(ctx1, {
+          type: 'line',
+          data: ${JSON.stringify(tcoProgressionData)},
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            plugins: {
+              title: { display: true, text: 'TCO Progression Over Time' },
+              legend: { position: 'top' }
+            },
+            scales: {
+              x: { title: { display: true, text: 'Year' } },
+              y: { title: { display: true, text: 'Cost (USD)' } }
+            },
+            animation: false
+          }
+        });
+        
+        const ctx2 = document.getElementById('pueComparisonChart').getContext('2d');
+        new Chart(ctx2, {
+          type: 'bar',
+          data: ${JSON.stringify(pueComparisonData)},
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            plugins: {
+              title: { display: true, text: 'PUE Comparison' },
+              legend: { position: 'top' }
+            },
+            scales: {
+              y: { 
+                title: { display: true, text: 'PUE Rating' },
+                beginAtZero: true
+              }
+            },
+            animation: false
+          }
+        });
+        
+        const ctx3 = document.getElementById('costBreakdownChart').getContext('2d');
+        new Chart(ctx3, {
+          type: 'doughnut',
+          data: ${JSON.stringify(costBreakdownData)},
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            plugins: {
+              title: { display: true, text: 'Cost Breakdown' },
+              legend: { position: 'right' }
+            },
+            animation: false
+          }
+        });
+      </script>
     </section>
   `;
 }
@@ -737,19 +807,451 @@ async function populateSummarySheet(sheet: ExcelJS.Worksheet, results: Calculati
 }
 
 async function populateBreakdownSheet(sheet: ExcelJS.Worksheet, results: CalculationResults, options: any) {
-  // Implementation for breakdown sheet
+  const { breakdown } = results;
+  
+  // Set up columns
+  sheet.columns = [
+    { header: 'Category', key: 'category', width: 25 },
+    { header: 'Air Cooling', key: 'air_cooling', width: 20 },
+    { header: 'Immersion Cooling', key: 'immersion_cooling', width: 20 },
+    { header: 'Savings', key: 'savings', width: 20 },
+    { header: 'Savings %', key: 'savings_pct', width: 15 },
+  ];
+
+  // CAPEX breakdown
+  sheet.addRow({ category: 'CAPITAL EXPENDITURE (CAPEX)' });
+  sheet.addRow({
+    category: 'Equipment',
+    air_cooling: breakdown.capex.air_cooling.equipment,
+    immersion_cooling: breakdown.capex.immersion_cooling.equipment,
+    savings: breakdown.capex.air_cooling.equipment - breakdown.capex.immersion_cooling.equipment,
+    savings_pct: ((breakdown.capex.air_cooling.equipment - breakdown.capex.immersion_cooling.equipment) / breakdown.capex.air_cooling.equipment * 100).toFixed(1) + '%'
+  });
+  
+  sheet.addRow({
+    category: 'Installation',
+    air_cooling: breakdown.capex.air_cooling.installation,
+    immersion_cooling: breakdown.capex.immersion_cooling.installation,
+    savings: breakdown.capex.air_cooling.installation - breakdown.capex.immersion_cooling.installation,
+    savings_pct: ((breakdown.capex.air_cooling.installation - breakdown.capex.immersion_cooling.installation) / breakdown.capex.air_cooling.installation * 100).toFixed(1) + '%'
+  });
+
+  sheet.addRow({
+    category: 'Infrastructure',
+    air_cooling: breakdown.capex.air_cooling.infrastructure,
+    immersion_cooling: breakdown.capex.immersion_cooling.infrastructure,
+    savings: breakdown.capex.air_cooling.infrastructure - breakdown.capex.immersion_cooling.infrastructure,
+    savings_pct: ((breakdown.capex.air_cooling.infrastructure - breakdown.capex.immersion_cooling.infrastructure) / breakdown.capex.air_cooling.infrastructure * 100).toFixed(1) + '%'
+  });
+
+  // OPEX breakdown
+  sheet.addRow({});
+  sheet.addRow({ category: 'OPERATIONAL EXPENDITURE (OPEX - 5 Year)' });
+  sheet.addRow({
+    category: 'Energy Costs',
+    air_cooling: breakdown.opex_5yr.air_cooling.energy,
+    immersion_cooling: breakdown.opex_5yr.immersion_cooling.energy,
+    savings: breakdown.opex_5yr.air_cooling.energy - breakdown.opex_5yr.immersion_cooling.energy,
+    savings_pct: ((breakdown.opex_5yr.air_cooling.energy - breakdown.opex_5yr.immersion_cooling.energy) / breakdown.opex_5yr.air_cooling.energy * 100).toFixed(1) + '%'
+  });
+
+  sheet.addRow({
+    category: 'Maintenance',
+    air_cooling: breakdown.opex_5yr.air_cooling.maintenance,
+    immersion_cooling: breakdown.opex_5yr.immersion_cooling.maintenance,
+    savings: breakdown.opex_5yr.air_cooling.maintenance - breakdown.opex_5yr.immersion_cooling.maintenance,
+    savings_pct: ((breakdown.opex_5yr.air_cooling.maintenance - breakdown.opex_5yr.immersion_cooling.maintenance) / breakdown.opex_5yr.air_cooling.maintenance * 100).toFixed(1) + '%'
+  });
+
+  // Style headers
+  sheet.getRow(1).font = { bold: true, size: 14 };
+  sheet.getRow(6).font = { bold: true, size: 14 };
 }
 
 async function populateCapexSheet(sheet: ExcelJS.Worksheet, results: CalculationResults, options: any) {
-  // Implementation for CAPEX sheet
+  const { breakdown } = results;
+  
+  sheet.columns = [
+    { header: 'Component', key: 'component', width: 30 },
+    { header: 'Air Cooling Cost', key: 'air_cost', width: 20 },
+    { header: 'Immersion Cooling Cost', key: 'immersion_cost', width: 25 },
+    { header: 'Cost Difference', key: 'difference', width: 20 },
+    { header: 'Notes', key: 'notes', width: 40 },
+  ];
+
+  // Air cooling CAPEX details
+  sheet.addRow({ component: 'AIR COOLING SYSTEM' });
+  sheet.addRow({
+    component: 'Servers & IT Equipment',
+    air_cost: breakdown.capex.air_cooling.equipment,
+    immersion_cost: 0,
+    difference: breakdown.capex.air_cooling.equipment,
+    notes: 'Standard server configuration with air cooling'
+  });
+
+  sheet.addRow({
+    component: 'HVAC System',
+    air_cost: breakdown.capex.air_cooling.hvac || 0,
+    immersion_cost: 0,
+    difference: breakdown.capex.air_cooling.hvac || 0,
+    notes: 'CRAC/CRAH units, air distribution, cooling towers'
+  });
+
+  sheet.addRow({
+    component: 'Power Infrastructure',
+    air_cost: breakdown.capex.air_cooling.infrastructure,
+    immersion_cost: 0,
+    difference: breakdown.capex.air_cooling.infrastructure,
+    notes: 'UPS, PDUs, electrical distribution'
+  });
+
+  // Immersion cooling CAPEX details
+  sheet.addRow({});
+  sheet.addRow({ component: 'IMMERSION COOLING SYSTEM' });
+  sheet.addRow({
+    component: 'Servers & IT Equipment',
+    air_cost: 0,
+    immersion_cost: breakdown.capex.immersion_cooling.equipment,
+    difference: -breakdown.capex.immersion_cooling.equipment,
+    notes: 'Immersion-ready server configuration'
+  });
+
+  sheet.addRow({
+    component: 'Immersion Tanks & Coolant',
+    air_cost: 0,
+    immersion_cost: breakdown.capex.immersion_cooling.coolant || 0,
+    difference: -(breakdown.capex.immersion_cooling.coolant || 0),
+    notes: 'Immersion tanks, dielectric coolant, pumps'
+  });
+
+  sheet.addRow({
+    component: 'Cooling Distribution Unit',
+    air_cost: 0,
+    immersion_cost: breakdown.capex.immersion_cooling.infrastructure,
+    difference: -breakdown.capex.immersion_cooling.infrastructure,
+    notes: 'CDU, heat exchangers, monitoring systems'
+  });
+
+  // Totals
+  sheet.addRow({});
+  sheet.addRow({
+    component: 'TOTAL CAPEX',
+    air_cost: breakdown.capex.air_cooling.total,
+    immersion_cost: breakdown.capex.immersion_cooling.total,
+    difference: breakdown.capex.air_cooling.total - breakdown.capex.immersion_cooling.total,
+    notes: 'Net CAPEX savings with immersion cooling'
+  });
+
+  // Style headers and totals
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFF0000' } };
+  sheet.getRow(6).font = { bold: true, color: { argb: 'FF0000FF' } };
+  sheet.getRow(12).font = { bold: true, size: 14 };
 }
 
 async function populateOpexSheet(sheet: ExcelJS.Worksheet, results: CalculationResults, options: any) {
-  // Implementation for OPEX sheet
+  const { breakdown } = results;
+  
+  sheet.columns = [
+    { header: 'Year', key: 'year', width: 10 },
+    { header: 'Air Cooling Energy', key: 'air_energy', width: 20 },
+    { header: 'Immersion Energy', key: 'immersion_energy', width: 20 },
+    { header: 'Energy Savings', key: 'energy_savings', width: 20 },
+    { header: 'Air Maintenance', key: 'air_maintenance', width: 20 },
+    { header: 'Immersion Maintenance', key: 'immersion_maintenance', width: 25 },
+    { header: 'Maintenance Savings', key: 'maintenance_savings', width: 20 },
+    { header: 'Total Annual Savings', key: 'total_savings', width: 25 },
+  ];
+
+  // Generate yearly breakdown (simplified)
+  const yearlyEnergySavings = (breakdown.opex_5yr.air_cooling.energy - breakdown.opex_5yr.immersion_cooling.energy) / 5;
+  const yearlyMaintenanceSavings = (breakdown.opex_5yr.air_cooling.maintenance - breakdown.opex_5yr.immersion_cooling.maintenance) / 5;
+
+  for (let year = 1; year <= 5; year++) {
+    sheet.addRow({
+      year: year,
+      air_energy: (breakdown.opex_5yr.air_cooling.energy / 5).toFixed(0),
+      immersion_energy: (breakdown.opex_5yr.immersion_cooling.energy / 5).toFixed(0),
+      energy_savings: yearlyEnergySavings.toFixed(0),
+      air_maintenance: (breakdown.opex_5yr.air_cooling.maintenance / 5).toFixed(0),
+      immersion_maintenance: (breakdown.opex_5yr.immersion_cooling.maintenance / 5).toFixed(0),
+      maintenance_savings: yearlyMaintenanceSavings.toFixed(0),
+      total_savings: (yearlyEnergySavings + yearlyMaintenanceSavings).toFixed(0)
+    });
+  }
+
+  // Add totals row
+  sheet.addRow({});
+  sheet.addRow({
+    year: 'TOTAL',
+    air_energy: breakdown.opex_5yr.air_cooling.energy,
+    immersion_energy: breakdown.opex_5yr.immersion_cooling.energy,
+    energy_savings: breakdown.opex_5yr.air_cooling.energy - breakdown.opex_5yr.immersion_cooling.energy,
+    air_maintenance: breakdown.opex_5yr.air_cooling.maintenance,
+    immersion_maintenance: breakdown.opex_5yr.immersion_cooling.maintenance,
+    maintenance_savings: breakdown.opex_5yr.air_cooling.maintenance - breakdown.opex_5yr.immersion_cooling.maintenance,
+    total_savings: (breakdown.opex_5yr.air_cooling.total - breakdown.opex_5yr.immersion_cooling.total)
+  });
+
+  // Style headers and totals
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(7).font = { bold: true, size: 12 };
 }
 
 async function populateEnvironmentalSheet(sheet: ExcelJS.Worksheet, results: CalculationResults, options: any) {
-  // Implementation for environmental impact sheet
+  const { environmental } = results;
+  
+  sheet.columns = [
+    { header: 'Environmental Metric', key: 'metric', width: 35 },
+    { header: 'Annual Impact', key: 'annual', width: 20 },
+    { header: '5-Year Impact', key: 'five_year', width: 20 },
+    { header: 'Unit', key: 'unit', width: 15 },
+    { header: 'Notes', key: 'notes', width: 50 },
+  ];
+
+  const environmentalData = [
+    {
+      metric: 'Energy Savings',
+      annual: environmental.energy_savings_kwh_annual.toLocaleString(),
+      five_year: (environmental.energy_savings_kwh_annual * 5).toLocaleString(),
+      unit: 'kWh',
+      notes: 'Reduced energy consumption due to improved PUE'
+    },
+    {
+      metric: 'Carbon Footprint Reduction',
+      annual: (environmental.carbon_savings_kg_co2_annual / 1000).toFixed(1),
+      five_year: ((environmental.carbon_savings_kg_co2_annual * 5) / 1000).toFixed(1),
+      unit: 'Metric Tons CO₂',
+      notes: 'Based on grid carbon intensity and energy savings'
+    },
+    {
+      metric: 'Water Savings',
+      annual: environmental.water_savings_gallons_annual.toLocaleString(),
+      five_year: (environmental.water_savings_gallons_annual * 5).toLocaleString(),
+      unit: 'Gallons',
+      notes: 'Reduced cooling tower water consumption'
+    },
+    {
+      metric: 'Waste Heat Recovery Potential',
+      annual: (environmental.energy_savings_kwh_annual * 0.7).toFixed(0),
+      five_year: (environmental.energy_savings_kwh_annual * 5 * 0.7).toFixed(0),
+      unit: 'kWh thermal',
+      notes: 'Recoverable waste heat for building heating'
+    }
+  ];
+
+  sheet.addRows(environmentalData);
+
+  // Add environmental impact summary
+  sheet.addRow({});
+  sheet.addRow({
+    metric: 'ENVIRONMENTAL IMPACT SUMMARY',
+    annual: '',
+    five_year: '',
+    unit: '',
+    notes: 'Immersion cooling significantly reduces environmental impact'
+  });
+
+  // Style headers
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(7).font = { bold: true, color: { argb: 'FF008000' } };
+}
+
+/**
+ * Generate TCO progression chart data
+ */
+function generateTCOProgressionData(timeline: any): any {
+  if (!timeline || !timeline.yearly_progression) {
+    return {
+      labels: ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'],
+      datasets: [
+        {
+          label: 'Air Cooling TCO',
+          data: [0, 0, 0, 0, 0],
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          fill: false
+        },
+        {
+          label: 'Immersion Cooling TCO',
+          data: [0, 0, 0, 0, 0],
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: false
+        }
+      ]
+    };
+  }
+
+  const years = timeline.yearly_progression;
+  const labels = years.map((year: any, index: number) => `Year ${index + 1}`);
+  
+  return {
+    labels,
+    datasets: [
+      {
+        label: 'Air Cooling Cumulative TCO',
+        data: years.map((year: any) => year.air_cooling.cumulative_tco),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        fill: false,
+        tension: 0.1
+      },
+      {
+        label: 'Immersion Cooling Cumulative TCO',
+        data: years.map((year: any) => year.immersion_cooling.cumulative_tco),
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        fill: false,
+        tension: 0.1
+      }
+    ]
+  };
+}
+
+/**
+ * Generate PUE comparison chart data
+ */
+function generatePUEComparisonData(summary: any): any {
+  return {
+    labels: ['Air Cooling', 'Immersion Cooling'],
+    datasets: [
+      {
+        label: 'PUE Rating',
+        data: [
+          summary.pue_air_cooling || 1.5,
+          summary.pue_immersion_cooling || 1.1
+        ],
+        backgroundColor: [
+          'rgba(239, 68, 68, 0.8)',
+          'rgba(59, 130, 246, 0.8)'
+        ],
+        borderColor: [
+          '#ef4444',
+          '#3b82f6'
+        ],
+        borderWidth: 2
+      }
+    ]
+  };
+}
+
+/**
+ * Generate cost breakdown chart data
+ */
+function generateCostBreakdownData(breakdown: any): any {
+  if (!breakdown || !breakdown.capex || !breakdown.opex_5yr) {
+    return {
+      labels: ['CAPEX', 'OPEX (5yr)'],
+      datasets: [
+        {
+          data: [50, 50],
+          backgroundColor: ['#f59e0b', '#10b981'],
+          borderColor: ['#d97706', '#059669'],
+          borderWidth: 2
+        }
+      ]
+    };
+  }
+
+  const airCoolingTotal = breakdown.capex.air_cooling.total + breakdown.opex_5yr.air_cooling.total;
+  const immersionCoolingTotal = breakdown.capex.immersion_cooling.total + breakdown.opex_5yr.immersion_cooling.total;
+
+  return {
+    labels: [
+      'Air Cooling CAPEX',
+      'Air Cooling OPEX (5yr)',
+      'Immersion Cooling CAPEX',
+      'Immersion Cooling OPEX (5yr)'
+    ],
+    datasets: [
+      {
+        data: [
+          breakdown.capex.air_cooling.total,
+          breakdown.opex_5yr.air_cooling.total,
+          breakdown.capex.immersion_cooling.total,
+          breakdown.opex_5yr.immersion_cooling.total
+        ],
+        backgroundColor: [
+          'rgba(239, 68, 68, 0.8)',
+          'rgba(239, 68, 68, 0.5)',
+          'rgba(59, 130, 246, 0.8)',
+          'rgba(59, 130, 246, 0.5)'
+        ],
+        borderColor: [
+          '#ef4444',
+          '#ef4444',
+          '#3b82f6',
+          '#3b82f6'
+        ],
+        borderWidth: 2
+      }
+    ]
+  };
+}
+
+/**
+ * Update PDF generation to wait for charts to render
+ */
+async function generatePDFReportWithCharts(
+  reportId: string,
+  results: CalculationResults,
+  configuration: any,
+  options: {
+    locale: Locale;
+    includeCharts: boolean;
+    includeBreakdown: boolean;
+    companyInfo?: any;
+    customBranding?: any;
+  }
+): Promise<string> {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
+
+  try {
+    const page = await browser.newPage();
+    
+    // Set viewport for consistent rendering
+    await page.setViewport({ width: 1200, height: 800 });
+    
+    // Generate HTML content
+    const htmlContent = await generateReportHTML(results, configuration, options);
+    
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    
+    // Wait for charts to render if included
+    if (options.includeCharts) {
+      await page.waitForFunction(() => {
+        return document.querySelectorAll('canvas').length >= 3;
+      }, { timeout: 10000 });
+      
+      // Additional wait for chart animations to complete
+      await page.waitForTimeout(2000);
+    }
+    
+    // Configure PDF generation
+    const reportPath = path.join(REPORTS_DIR, `${reportId}.pdf`);
+    
+    await page.pdf({
+      path: reportPath,
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20mm',
+        right: '15mm',
+        bottom: '20mm',
+        left: '15mm',
+      },
+      displayHeaderFooter: true,
+      headerTemplate: generateHeaderTemplate(options.companyInfo, options.customBranding),
+      footerTemplate: generateFooterTemplate(),
+    });
+
+    return reportPath;
+  } finally {
+    await browser.close();
+  }
 }
 
 export default router;
