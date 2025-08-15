@@ -1,0 +1,33 @@
+{
+  "name": "tco-calculator-simple",
+  "version": "1.0.0",
+  "description": "Standalone TCO Calculator for Immersion Cooling Analysis",
+  "main": "tco-calculator.js",
+  "scripts": {
+    "start": "node tco-calculator.js",
+    "dev": "node tco-calculator.js",
+    "docker:build": "docker build -t tco-calculator .",
+    "docker:run": "docker run -p 4000:4000 tco-calculator",
+    "docker:compose": "docker-compose -f docker-compose.simple.yml up --build"
+  },
+  "dependencies": {
+    "http": "*",
+    "net": "*"
+  },
+  "keywords": [
+    "tco",
+    "calculator",
+    "immersion-cooling",
+    "data-center",
+    "cost-analysis",
+    "energy-efficiency",
+    "roi",
+    "capex",
+    "opex"
+  ],
+  "author": "TCO Analysis Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

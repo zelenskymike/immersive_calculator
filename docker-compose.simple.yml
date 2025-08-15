@@ -1,0 +1,23 @@
+services:
+  tco-calculator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tco-calculator
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4000}:4000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+    networks:
+      - tco-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  tco-network:
+    driver: bridge
