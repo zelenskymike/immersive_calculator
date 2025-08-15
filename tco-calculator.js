@@ -1,124 +1,85 @@
-#!/usr/bin/env node
-
 const http = require('http');
 const net = require('net');
 
 /**
- * Checks if a given port is available for use
- * @param {number} port - The port number to check
- * @returns {Promise<boolean>} Promise that resolves to true if port is available, false otherwise
+ * Check if a port is available
+ * @param {number} port - Port number to check
+ * @return {Promise<boolean>} True if port is available
  */
 function checkPort(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
-    
-    // Try to listen on the port
-    server.listen(port, () => {
-      // Port is available, close the server and return true
-      server.close(() => {
-        resolve(true);
-      });
-    });
-    
-    // Port is in use, return false
-    server.on('error', () => {
-      resolve(false);
+    server.listen(port, (err) => {
+      if (err) {
+        resolve(false);
+      } else {
+        server.close(() => {
+          resolve(true);
+        });
+      }
     });
   });
 }
 
 /**
- * Finds the first available port starting from a given port number
- * @param {number} startPort - The starting port number (default: 4000)
- * @returns {Promise<number>} Promise that resolves to the first available port number
- * @throws {Error} When no available ports are found within the range
+ * Find the first available port starting from the given port
+ * @param {number} startPort - Starting port number (default: 4000)
+ * @return {Promise<number>} Available port number
  */
 async function findAvailablePort(startPort = 4000) {
-  // Check 100 consecutive ports starting from startPort
-  for (let port = startPort; port < startPort + 100; port++) {
+  let port = startPort;
+  while (port < startPort + 10) {
     if (await checkPort(port)) {
       return port;
     }
+    port++;
   }
-  throw new Error('No available ports found in range ' + startPort + '-' + (startPort + 99));
+  throw new Error('No available ports found in range');
 }
 
 /**
- * Calculates Total Cost of Ownership (TCO) comparison between air cooling and immersion cooling systems
- * 
- * This function performs comprehensive TCO analysis including:
- * - CAPEX (Capital Expenditure) calculations
- * - OPEX (Operating Expenditure) calculations with NPV discounting
- * - Energy consumption and efficiency metrics
- * - ROI, payback period, and savings analysis
- * - Environmental impact calculations (CO2 reduction)
- * 
- * @param {Object} input - Configuration object with calculation parameters
- * @param {number} [input.airRacks=10] - Number of air-cooled 42U racks
- * @param {number} [input.airPowerPerRack=20] - Power consumption per air-cooled rack (kW)
- * @param {number} [input.airRackCost=50000] - Cost per air-cooled rack setup ($)
- * @param {number} [input.airPUE=1.8] - Power Usage Effectiveness for air cooling
- * @param {number} [input.immersionTanks=9] - Number of immersion cooling tanks
- * @param {number} [input.immersionPowerPerTank=23] - Power consumption per tank (kW)
- * @param {number} [input.immersionTankCost=80000] - Cost per immersion tank setup ($)
- * @param {number} [input.immersionPUE=1.1] - Power Usage Effectiveness for immersion cooling
- * @param {number} [input.analysisYears=5] - Analysis period in years
- * @param {number} [input.electricityPrice=0.12] - Electricity cost per kWh ($)
- * @param {number} [input.discountRate=5] - Annual discount rate for NPV calculation (%)
- * @param {number} [input.maintenanceCost=3] - Annual maintenance as % of CAPEX
- * 
- * @returns {Object} Comprehensive TCO analysis results
- * @returns {string} returns.timestamp - ISO timestamp of calculation
- * @returns {string} returns.calculationId - Unique calculation identifier
- * @returns {Object} returns.parameters - Input parameters used for calculation
- * @returns {Object} returns.airCooling - Air cooling system analysis
- * @returns {Object} returns.immersionCooling - Immersion cooling system analysis
- * @returns {Object} returns.comparison - Comparative analysis and savings
+ * Validate input parameters for TCO calculation
+ * @param {Object} params - Input parameters to validate
+ * @throws {Error} If validation fails
  */
-function calculateTCO(input) {
-  // Input validation and sanitization
-  if (!input || typeof input !== 'object') {
-    throw new Error('Invalid input: Expected object with calculation parameters');
-  }
-
+function validateInput(params) {
   const {
-    airRacks = 10,
-    airPowerPerRack = 20,
-    airRackCost = 50000,
-    airPUE = 1.8,
-    
-    immersionTanks = 9,
-    immersionPowerPerTank = 23,
-    immersionTankCost = 80000,
-    immersionPUE = 1.1,
-    
-    analysisYears = 5,
-    electricityPrice = 0.12,
-    discountRate = 5,
-    maintenanceCost = 3
-  } = input;
-  
-  // Validate input ranges and business logic
-  if (airRacks < 1 || airRacks > 1000) {
-    throw new Error('Air racks must be between 1 and 1000');
-  }
-  if (immersionTanks < 1 || immersionTanks > 500) {
-    throw new Error('Immersion tanks must be between 1 and 500');
+    airRacks, airPowerPerRack, airRackCost, airPUE,
+    immersionTanks, immersionPowerPerTank, immersionTankCost, immersionPUE,
+    analysisYears, electricityPrice, discountRate, maintenanceCost
+  } = params;
+
+  // Air cooling validation
+  if (!Number.isInteger(airRacks) || airRacks < 1 || airRacks > 1000) {
+    throw new Error('Air racks must be integer between 1 and 1000');
   }
   if (airPowerPerRack < 1 || airPowerPerRack > 100) {
     throw new Error('Air power per rack must be between 1 and 100 kW');
   }
+  if (airRackCost < 10000 || airRackCost > 500000) {
+    throw new Error('Air rack cost must be between $10,000 and $500,000');
+  }
+  if (airPUE < 1.0 || airPUE > 3.0) {
+    throw new Error('Air PUE must be between 1.0 and 3.0');
+  }
+
+  // Immersion cooling validation
+  if (!Number.isInteger(immersionTanks) || immersionTanks < 1 || immersionTanks > 500) {
+    throw new Error('Immersion tanks must be integer between 1 and 500');
+  }
   if (immersionPowerPerTank < 5 || immersionPowerPerTank > 200) {
     throw new Error('Immersion power per tank must be between 5 and 200 kW');
   }
-  if (airPUE < 1.0 || airPUE > 3.0) {
-    throw new Error('Air cooling PUE must be between 1.0 and 3.0');
+  if (immersionTankCost < 20000 || immersionTankCost > 1000000) {
+    throw new Error('Immersion tank cost must be between $20,000 and $1,000,000');
   }
   if (immersionPUE < 1.0 || immersionPUE > 2.0) {
-    throw new Error('Immersion cooling PUE must be between 1.0 and 2.0');
+    throw new Error('Immersion PUE must be between 1.0 and 2.0');
   }
-  if (analysisYears < 1 || analysisYears > 20) {
-    throw new Error('Analysis period must be between 1 and 20 years');
+
+  // Analysis parameters validation
+  if (!Number.isInteger(analysisYears) || analysisYears < 1 || analysisYears > 20) {
+    throw new Error('Analysis years must be integer between 1 and 20');
   }
   if (electricityPrice < 0.01 || electricityPrice > 1.0) {
     throw new Error('Electricity price must be between $0.01 and $1.00 per kWh');
@@ -129,76 +90,76 @@ function calculateTCO(input) {
   if (maintenanceCost < 0 || maintenanceCost > 15) {
     throw new Error('Maintenance cost must be between 0% and 15% of CAPEX');
   }
-  
-  // Business logic validation
-  if (immersionPUE > airPUE) {
-    console.warn('Warning: Immersion PUE is higher than air cooling PUE - this is unusual');
-  }
-  
-  // Convert percentage inputs to decimal values for calculations
+}
+
+/**
+ * Calculate Total Cost of Ownership with comprehensive financial analysis
+ * @param {Object} params - Calculation parameters
+ * @return {Object} Detailed TCO analysis results
+ */
+function calculateTCO(params) {
+  // Extract and set defaults for all parameters
+  const {
+    airRacks, 
+    airPowerPerRack = 20, 
+    airRackCost = 50000, 
+    airPUE = 1.8,
+    immersionTanks, 
+    immersionPowerPerTank = 23, 
+    immersionTankCost = 80000, 
+    immersionPUE = 1.1,
+    analysisYears, 
+    electricityPrice = 0.12, 
+    discountRate = 5, 
+    maintenanceCost = 3
+  } = params;
+
+  // Input validation
+  validateInput(params);
+
+  // Convert percentage rates to decimals
   const discountRateDecimal = discountRate / 100;
-  const maintenanceCostDecimal = maintenanceCost / 100;
-  
-  // Calculate total IT power requirements for each cooling system
-  const airTotalPower = airRacks * airPowerPerRack; // Total kW for air cooling
-  const immersionTotalPower = immersionTanks * immersionPowerPerTank; // Total kW for immersion
-  
-  // Calculate Capital Expenditure (CAPEX) for both systems
-  const airCAPEX = airRacks * airRackCost; // Initial investment for air cooling
-  const immersionCAPEX = immersionTanks * immersionTankCost; // Initial investment for immersion
-  
-  // Calculate annual energy consumption including PUE overhead
-  const hoursPerYear = 8760; // Hours in a year (24 * 365)
-  
-  // Total facility energy consumption = IT power × operating hours × PUE
-  const airAnnualEnergy = airTotalPower * hoursPerYear * airPUE; // kWh/year
-  const immersionAnnualEnergy = immersionTotalPower * hoursPerYear * immersionPUE; // kWh/year
-  
-  // Calculate annual electricity costs
-  const airAnnualElectricity = airAnnualEnergy * electricityPrice;
-  const immersionAnnualElectricity = immersionAnnualEnergy * electricityPrice;
-  
-  // Calculate annual maintenance costs as percentage of CAPEX
-  const airAnnualMaintenance = airCAPEX * maintenanceCostDecimal;
-  const immersionAnnualMaintenance = immersionCAPEX * maintenanceCostDecimal;
-  
-  // Total Annual Operating Expenditure (OPEX) = Electricity + Maintenance
-  const airAnnualOPEX = airAnnualElectricity + airAnnualMaintenance;
+  const maintenanceRateDecimal = maintenanceCost / 100;
+
+  // Air cooling calculations
+  const airTotalPower = airRacks * airPowerPerRack; // Total IT power in kW
+  const airTotalWithPUE = airTotalPower * airPUE; // Total facility power including cooling
+  const airCAPEX = airRacks * airRackCost; // Capital expenditure
+  const airAnnualElectricity = airTotalWithPUE * 8760 * electricityPrice; // 8760 hours per year
+  const airAnnualMaintenance = airCAPEX * maintenanceRateDecimal; // Annual maintenance cost
+  const airAnnualOPEX = airAnnualElectricity + airAnnualMaintenance; // Total annual operating cost
+
+  // Immersion cooling calculations  
+  const immersionTotalPower = immersionTanks * immersionPowerPerTank;
+  const immersionTotalWithPUE = immersionTotalPower * immersionPUE;
+  const immersionCAPEX = immersionTanks * immersionTankCost;
+  const immersionAnnualElectricity = immersionTotalWithPUE * 8760 * electricityPrice;
+  const immersionAnnualMaintenance = immersionCAPEX * maintenanceRateDecimal;
   const immersionAnnualOPEX = immersionAnnualElectricity + immersionAnnualMaintenance;
-  
-  // Calculate Total Cost of Ownership using Net Present Value (NPV) methodology
-  // TCO = CAPEX + NPV of all future OPEX
-  let airTCO = airCAPEX; // Start with initial capital investment
+
+  // Multi-year TCO calculation with Net Present Value (NPV)
+  let airTCO = airCAPEX; // Start with initial CAPEX
   let immersionTCO = immersionCAPEX;
-  
-  // Discount future operating costs to present value
+
+  // Add discounted OPEX for each year
   for (let year = 1; year <= analysisYears; year++) {
-    // Discount factor = (1 + discount_rate)^year
     const discountFactor = Math.pow(1 + discountRateDecimal, year);
-    
-    // Add discounted annual OPEX to TCO
     airTCO += airAnnualOPEX / discountFactor;
     immersionTCO += immersionAnnualOPEX / discountFactor;
   }
-  
-  // Calculate financial metrics and savings
-  const totalSavings = airTCO - immersionTCO; // Total NPV savings over analysis period
-  const annualSavings = airAnnualOPEX - immersionAnnualOPEX; // Annual OPEX savings
+
+  // Financial analysis calculations
+  const totalSavings = airTCO - immersionTCO;
+  const annualSavings = airAnnualOPEX - immersionAnnualOPEX;
   const capexDifference = immersionCAPEX - airCAPEX; // Additional upfront investment
-  
-  // Simple payback period = Additional CAPEX / Annual Savings
-  const paybackPeriod = Math.abs(capexDifference / annualSavings);
-  
-  // Return on Investment = (Total Savings / Investment) * 100%
-  const roi = (totalSavings / immersionCAPEX) * 100;
-  
-  // Calculate efficiency and environmental metrics
-  const pueImprovement = ((airPUE - immersionPUE) / airPUE) * 100; // PUE improvement percentage
-  const annualEnergySavings = (airAnnualEnergy - immersionAnnualEnergy) / 1000; // Convert to MWh
-  
-  // Carbon footprint reduction (assuming 0.4 kg CO2 per kWh average grid emissions)
+  const paybackYears = capexDifference > 0 ? capexDifference / annualSavings : 0;
+  const roiPercent = totalSavings / immersionCAPEX * 100;
+
+  // Energy efficiency calculations
+  const pueImprovement = ((airPUE - immersionPUE) / airPUE) * 100;
+  const annualEnergySavings = (airTotalWithPUE - immersionTotalWithPUE) * 8760 / 1000; // MWh per year
   const carbonReduction = (annualEnergySavings * 1000 * 0.4) / 1000; // tons CO2 per year
-  
+
   return {
     timestamp: new Date().toISOString(), // ISO 8601 timestamp
     calculationId: 'calc_' + Date.now(), // Unique calculation identifier
@@ -223,7 +184,7 @@ function calculateTCO(input) {
         totalTCO: Math.round(airTCO)
       },
       energy: {
-        annualConsumptionMWh: Math.round(airAnnualEnergy / 1000)
+        annualConsumptionMWh: Math.round(airTotalWithPUE * 8760 / 1000)
       }
     },
     immersionCooling: {
@@ -241,7 +202,7 @@ function calculateTCO(input) {
         totalTCO: Math.round(immersionTCO)
       },
       energy: {
-        annualConsumptionMWh: Math.round(immersionAnnualEnergy / 1000)
+        annualConsumptionMWh: Math.round(immersionTotalWithPUE * 8760 / 1000)
       }
     },
     comparison: {
@@ -249,8 +210,8 @@ function calculateTCO(input) {
         totalSavings: Math.round(totalSavings),
         annualSavings: Math.round(annualSavings),
         capexDifference: Math.round(capexDifference),
-        paybackYears: Math.round(paybackPeriod * 10) / 10,
-        roiPercent: Math.round(roi * 10) / 10
+        paybackYears: Math.round(paybackYears * 10) / 10, // Round to 1 decimal
+        roiPercent: Math.round(roiPercent * 10) / 10
       },
       efficiency: {
         pueImprovement: Math.round(pueImprovement * 10) / 10,
@@ -262,18 +223,63 @@ function calculateTCO(input) {
 }
 
 /**
- * Generates the complete HTML interface for the TCO Calculator
- * 
- * Creates a responsive, professional web interface with:
- * - Interactive form for input parameters
- * - Real-time calculation results
- * - Multiple chart visualizations
- * - Responsive design for mobile and desktop
- * 
- * @returns {string} Complete HTML document as string
+ * Create and start the HTTP server
+ * @param {number} port - Port number for the server
+ * @return {http.Server} HTTP server instance
  */
-function getHTML() {
-  return `<!DOCTYPE html>
+function createServer(port) {
+  const server = http.createServer((req, res) => {
+    // Enable CORS for cross-origin requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // API endpoint for TCO calculations
+    if (req.method === 'POST' && req.url === '/api/calculate') {
+      let body = '';
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+      
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          console.log('📊 Processing TCO calculation request:', {
+            airRacks: data.airRacks,
+            immersionTanks: data.immersionTanks,
+            years: data.analysisYears
+          });
+          
+          const result = calculateTCO(data);
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result, null, 2));
+          
+          console.log('✅ Calculation completed:', {
+            totalSavings: result.comparison.savings.totalSavings,
+            payback: result.comparison.savings.paybackYears + ' years',
+            roi: result.comparison.savings.roiPercent + '%'
+          });
+        } catch (error) {
+          console.error('❌ API Error:', error.message);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+      });
+      return;
+    }
+
+    // Serve the main web interface
+    if (req.method === 'GET' && req.url === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -293,37 +299,43 @@ function getHTML() {
         .container { max-width: 1200px; margin: 0 auto; }
         .header {
             text-align: center;
-            margin-bottom: 30px;
-            background: rgba(255,255,255,0.1);
+            margin-bottom: 40px;
             padding: 30px;
-            border-radius: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
-        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
-        .header p { font-size: 1.1rem; opacity: 0.9; }
+        .header h1 { font-size: 3rem; margin-bottom: 15px; }
+        .header p { font-size: 1.2rem; opacity: 0.9; }
         .status-bar {
+            display: inline-block;
+            padding: 8px 16px;
             background: rgba(76, 175, 80, 0.2);
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            text-align: center;
             border: 1px solid rgba(76, 175, 80, 0.3);
+            border-radius: 25px;
+            font-size: 0.9rem;
+            margin-top: 15px;
         }
         .form-section {
-            background: rgba(255,255,255,0.15);
-            padding: 30px;
-            border-radius: 15px;
+            background: rgba(255,255,255,0.95);
+            color: #333;
+            padding: 40px;
+            border-radius: 20px;
             margin-bottom: 30px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
         }
         .form-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 30px;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
             margin-bottom: 30px;
+        }
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+            color: #333;
         }
         .form-group {
             margin-bottom: 20px;
@@ -332,120 +344,157 @@ function getHTML() {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            font-size: 0.95rem;
+            color: #555;
         }
         .form-group input, .form-group select {
             width: 100%;
-            padding: 12px 15px;
-            border: none;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.9);
-            color: #333;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
             font-size: 1rem;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
+            background: white;
         }
         .form-group input:focus, .form-group select:focus {
             outline: none;
-            background: rgba(255,255,255,1);
-            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
-            transform: translateY(-2px);
-        }
-        .section-title {
-            font-size: 1.4rem;
-            margin-bottom: 20px;
-            color: #4CAF50;
-            border-bottom: 2px solid #4CAF50;
-            padding-bottom: 10px;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         .calculate-btn {
             width: 100%;
-            max-width: 400px;
-            margin: 0 auto;
-            display: block;
-            padding: 18px 30px;
-            background: linear-gradient(45deg, #4CAF50, #45a049);
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            border-radius: 25px;
-            font-size: 1.3rem;
-            font-weight: bold;
+            border-radius: 15px;
+            font-size: 1.2rem;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+            transition: all 0.3s ease;
+            margin-top: 20px;
         }
         .calculate-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
-        }
-        .calculate-btn:active {
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
         }
         .results-section {
             display: none;
-            margin-top: 30px;
-            animation: fadeInUp 0.6s ease;
-        }
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
+            background: rgba(255,255,255,0.95);
+            color: #333;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
         }
         .results-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
+            gap: 25px;
             margin-bottom: 30px;
         }
         .result-card {
-            background: rgba(255,255,255,0.15);
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             padding: 25px;
-            border-radius: 12px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.2);
-            transition: all 0.3s;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            border-left: 5px solid;
         }
-        .result-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-        .result-card h4 {
-            color: #4CAF50;
-            margin-bottom: 15px;
-            font-size: 1.1rem;
+        .result-card.air { border-left-color: #FF6B6B; }
+        .result-card.immersion { border-left-color: #4ECDC4; }
+        .result-card.savings { border-left-color: #45B7D1; }
+        .result-card h3 { 
+            font-size: 1.1rem; 
+            margin-bottom: 15px; 
+            color: #333; 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
         }
         .result-value {
-            font-size: 2rem;
-            font-weight: bold;
+            font-size: 1.8rem;
+            font-weight: 700;
             margin-bottom: 8px;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            color: #2c3e50;
         }
         .result-subtitle {
             font-size: 0.9rem;
-            opacity: 0.8;
+            color: #666;
+            margin-bottom: 5px;
         }
         .savings-highlight {
-            background: linear-gradient(45deg, #4CAF50, #45a049);
-            padding: 30px;
-            border-radius: 15px;
             text-align: center;
-            margin: 30px 0;
-            box-shadow: 0 8px 30px rgba(76, 175, 80, 0.3);
-        }
-        .savings-highlight h3 {
-            font-size: 1.8rem;
-            margin-bottom: 15px;
+            padding: 30px;
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 35px rgba(76, 175, 80, 0.3);
         }
         .savings-value {
             font-size: 3rem;
-            font-weight: bold;
-            margin: 20px 0;
+            font-weight: 800;
+            margin: 15px 0;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         .chart-container {
             background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+        }
+        .chart-switcher {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 20px;
+        }
+        .view-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .view-btn {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            background: transparent;
+            color: #667eea;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        .view-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .view-btn.active {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .single-chart-container {
+            background: rgba(255, 255, 255, 0.95);
             padding: 25px;
             border-radius: 15px;
-            margin: 30px 0;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+        .grid-charts {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         .loading {
             text-align: center;
@@ -465,6 +514,10 @@ function getHTML() {
             .results-grid { grid-template-columns: 1fr; }
             .header h1 { font-size: 2rem; }
             .savings-value { font-size: 2.5rem; }
+            .view-buttons { flex-direction: column; align-items: center; }
+            .grid-charts div[style*="grid-template-columns"] {
+                grid-template-columns: 1fr !important;
+            }
         }
     </style>
 </head>
@@ -560,19 +613,39 @@ function getHTML() {
             <div id="resultsContent" style="display: none;">
                 <div id="savingsHighlight" class="savings-highlight"></div>
                 <div id="resultsGrid" class="results-grid"></div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); gap: 30px;">
-                    <div class="chart-container">
-                        <h4 style="text-align: center; color: #333; margin-bottom: 20px;">TCO Comparison Analysis</h4>
-                        <canvas id="tcoChart" width="400" height="200"></canvas>
-                    </div>
-                    <div class="chart-container">
-                        <h4 style="text-align: center; color: #333; margin-bottom: 20px;">Cost Breakdown</h4>
-                        <canvas id="pieChart" width="400" height="200"></canvas>
+                
+                <!-- Chart View Switcher -->
+                <div class="chart-switcher">
+                    <h4 style="text-align: center; color: #333; margin-bottom: 15px;">📊 Data Visualization</h4>
+                    <div class="view-buttons">
+                        <button class="view-btn active" onclick="switchView('comparison')" id="btn-comparison">📊 TCO Comparison</button>
+                        <button class="view-btn" onclick="switchView('breakdown')" id="btn-breakdown">🥧 Cost Breakdown</button>
+                        <button class="view-btn" onclick="switchView('timeline')" id="btn-timeline">📈 Savings Timeline</button>
+                        <button class="view-btn" onclick="switchView('grid')" id="btn-grid">⊞ All Charts</button>
                     </div>
                 </div>
-                <div class="chart-container">
-                    <h4 style="text-align: center; color: #333; margin-bottom: 20px;">Savings Over Time</h4>
-                    <canvas id="savingsChart" width="400" height="200"></canvas>
+                
+                <!-- Single Chart Container -->
+                <div id="singleChartView" class="single-chart-container">
+                    <canvas id="activeChart" width="800" height="400"></canvas>
+                </div>
+                
+                <!-- Grid View Container -->
+                <div id="gridChartView" class="grid-charts" style="display: none;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                        <div class="chart-container" style="padding: 15px;">
+                            <h5 style="text-align: center; color: #333; margin-bottom: 10px; font-size: 1rem;">TCO Comparison</h5>
+                            <canvas id="tcoChart" width="350" height="250"></canvas>
+                        </div>
+                        <div class="chart-container" style="padding: 15px;">
+                            <h5 style="text-align: center; color: #333; margin-bottom: 10px; font-size: 1rem;">Cost Breakdown</h5>
+                            <canvas id="pieChart" width="350" height="250"></canvas>
+                        </div>
+                        <div class="chart-container" style="padding: 15px;">
+                            <h5 style="text-align: center; color: #333; margin-bottom: 10px; font-size: 1rem;">Savings Timeline</h5>
+                            <canvas id="savingsChart" width="350" height="250"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -583,6 +656,9 @@ function getHTML() {
         let tcoChart = null;
         let pieChart = null;
         let savingsChart = null;
+        let activeChart = null;
+        let currentView = 'comparison';
+        let chartData = null;
         
         // Enhanced color schemes for professional visualization
         const colors = {
@@ -651,11 +727,11 @@ function getHTML() {
                 });
                 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Ошибка расчета');
+                    throw new Error('Server responded with status: ' + response.status);
                 }
                 
                 const result = await response.json();
+                chartData = result;
                 displayResults(result);
                 
                 setTimeout(() => {
@@ -667,82 +743,119 @@ function getHTML() {
                 loading.style.display = 'none';
                 const errorData = err.response ? await err.response.json() : { error: err.message };
                 alert('❌ Calculation Error: ' + errorData.error);
-                console.error('TCO Calculation error:', errorData);
             }
         }
         
         /**
-         * Display comprehensive TCO analysis results with enhanced visualizations
-         * @param {Object} result - Complete calculation results from the API
+         * Switch between different chart views
+         * @param {string} view - View type: 'comparison', 'breakdown', 'timeline', 'grid'
          */
-        function displayResults(result) {
-            const { airCooling, immersionCooling, comparison, parameters } = result;
+        function switchView(view) {
+            currentView = view;
             
-            // Create savings highlight section with professional metrics
-            document.getElementById('savingsHighlight').innerHTML = 
-                '<h3>💰 Immersion Cooling Savings</h3>' +
-                '<div class="savings-value">$' + formatNumber(comparison.savings.totalSavings) + '</div>' +
-                '<div style="font-size: 1.2rem;">' +
-                'over ' + parameters.analysisYears + ' years • ' +
-                'ROI: ' + comparison.savings.roiPercent + '% • ' +
-                'Payback: ' + comparison.savings.paybackYears + ' years' +
-                '</div>' +
-                '<div style="margin-top: 15px; font-size: 1.1rem;">' +
-                'PUE Improvement: ' + comparison.efficiency.pueImprovement + '% • ' +
-                'Energy Savings: ' + comparison.efficiency.annualEnergySavingsMWh + ' MWh/year • ' +
-                'CO₂ Reduction: ' + comparison.efficiency.annualCarbonReductionTons + ' tons/year' +
-                '</div>';
+            // Update button states
+            document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(\`btn-\${view}\`).classList.add('active');
             
-            // Create professional results grid with clear English labels
-            document.getElementById('resultsGrid').innerHTML = 
-                '<div class="result-card">' +
-                '<h4>CAPEX - Air Cooling</h4>' +
-                '<div class="result-value">$' + formatNumber(airCooling.costs.capex) + '</div>' +
-                '<div class="result-subtitle">' + airCooling.equipment.count + ' racks • ' + airCooling.equipment.totalPowerKW + ' kW total</div>' +
-                '</div>' +
-                '<div class="result-card">' +
-                '<h4>CAPEX - Immersion Cooling</h4>' +
-                '<div class="result-value">$' + formatNumber(immersionCooling.costs.capex) + '</div>' +
-                '<div class="result-subtitle">' + immersionCooling.equipment.count + ' tanks • ' + immersionCooling.equipment.totalPowerKW + ' kW total</div>' +
-                '</div>' +
-                '<div class="result-card">' +
-                '<h4>OPEX - Air Cooling</h4>' +
-                '<div class="result-value">$' + formatNumber(airCooling.costs.annualOpex) + '/year</div>' +
-                '<div class="result-subtitle">PUE: ' + airCooling.equipment.pue + ' • ' + airCooling.energy.annualConsumptionMWh + ' MWh/year</div>' +
-                '</div>' +
-                '<div class="result-card">' +
-                '<h4>OPEX - Immersion Cooling</h4>' +
-                '<div class="result-value">$' + formatNumber(immersionCooling.costs.annualOpex) + '/year</div>' +
-                '<div class="result-subtitle">PUE: ' + immersionCooling.equipment.pue + ' • ' + immersionCooling.energy.annualConsumptionMWh + ' MWh/year</div>' +
-                '</div>' +
-                '<div class="result-card">' +
-                '<h4>TCO - Air Cooling</h4>' +
-                '<div class="result-value">$' + formatNumber(airCooling.costs.totalTCO) + '</div>' +
-                '<div class="result-subtitle">' + parameters.analysisYears + ' years with NPV discount</div>' +
-                '</div>' +
-                '<div class="result-card">' +
-                '<h4>TCO - Immersion Cooling</h4>' +
-                '<div class="result-value">$' + formatNumber(immersionCooling.costs.totalTCO) + '</div>' +
-                '<div class="result-subtitle">' + parameters.analysisYears + ' years with NPV discount</div>' +
-                '</div>';
+            // Get containers
+            const singleView = document.getElementById('singleChartView');
+            const gridView = document.getElementById('gridChartView');
             
-            // Create all chart visualizations
-            createTCOChart(result);
-            createPieChart(result);
-            createSavingsChart(result);
+            if (view === 'grid') {
+                // Hide single view first
+                singleView.style.display = 'none';
+                
+                // Show grid view and wait for layout
+                gridView.style.display = 'block';
+                gridView.style.opacity = '0';
+                
+                // Update charts after container is visible
+                if (chartData) {
+                    updateGridCharts(chartData);
+                    
+                    // Fade in after charts are ready
+                    setTimeout(() => {
+                        gridView.style.transition = 'opacity 0.3s ease';
+                        gridView.style.opacity = '1';
+                    }, 100);
+                }
+            } else {
+                // Hide grid view
+                gridView.style.display = 'none';
+                gridView.style.opacity = '1';
+                gridView.style.transition = 'none';
+                
+                // Show single view
+                singleView.style.display = 'block';
+                
+                if (chartData) updateSingleChart(chartData, view);
+            }
         }
         
         /**
-         * Create enhanced TCO comparison bar chart
-         * @param {Object} result - Complete calculation results
+         * Update single active chart based on view type
+         * @param {Object} data - TCO calculation results
+         * @param {string} view - Chart type to display
          */
-        function createTCOChart(result) {
-            const { airCooling, immersionCooling, parameters } = result;
+        function updateSingleChart(data, view) {
+            if (activeChart) {
+                activeChart.destroy();
+            }
             
+            const ctx = document.getElementById('activeChart').getContext('2d');
+            
+            switch (view) {
+                case 'comparison':
+                    activeChart = createTCOChart(ctx, data);
+                    break;
+                case 'breakdown':
+                    activeChart = createPieChart(ctx, data);
+                    break;
+                case 'timeline':
+                    activeChart = createSavingsChart(ctx, data);
+                    break;
+            }
+        }
+        
+        /**
+         * Update all charts in grid view
+         * @param {Object} data - TCO calculation results
+         */
+        function updateGridCharts(data) {
+            // Destroy existing charts
             if (tcoChart) tcoChart.destroy();
+            if (pieChart) pieChart.destroy();
+            if (savingsChart) savingsChart.destroy();
             
-            const ctx = document.getElementById('tcoChart').getContext('2d');
-            tcoChart = new Chart(ctx, {
+            // Wait for DOM to be fully visible before creating charts
+            setTimeout(() => {
+                const tcoCtx = document.getElementById('tcoChart').getContext('2d');
+                const pieCtx = document.getElementById('pieChart').getContext('2d');
+                const savingsCtx = document.getElementById('savingsChart').getContext('2d');
+                
+                tcoChart = createTCOChart(tcoCtx, data, 'grid');
+                pieChart = createPieChart(pieCtx, data, 'grid');
+                savingsChart = createSavingsChart(savingsCtx, data, 'grid');
+                
+                // Force resize after creation to fix stretching
+                requestAnimationFrame(() => {
+                    if (tcoChart) tcoChart.resize();
+                    if (pieChart) pieChart.resize();
+                    if (savingsChart) savingsChart.resize();
+                });
+            }, 50);
+        }
+        
+        /**
+         * Create TCO comparison bar chart
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {Object} data - TCO calculation results
+         * @return {Chart} Chart.js instance
+         */
+        function createTCOChart(ctx, data, mode = 'single') {
+            const { airCooling, immersionCooling, parameters } = data;
+            
+            return new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: ['Air Cooling', 'Immersion Cooling'],
@@ -753,7 +866,7 @@ function getHTML() {
                         borderColor: colors.accent.primary,
                         borderWidth: 2
                     }, {
-                        label: 'OPEX (' + parameters.analysisYears + ' years)',
+                        label: \`OPEX (\${parameters.analysisYears} years)\`,
                         data: [
                             airCooling.costs.annualOpex * parameters.analysisYears, 
                             immersionCooling.costs.annualOpex * parameters.analysisYears
@@ -765,7 +878,8 @@ function getHTML() {
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    maintainAspectRatio: true,
+                    aspectRatio: mode === 'grid' ? 1.4 : 2,
                     plugins: {
                         title: {
                             display: false
@@ -783,59 +897,55 @@ function getHTML() {
                             backgroundColor: 'rgba(0, 0, 0, 0.8)',
                             titleColor: '#fff',
                             bodyColor: '#fff',
-                            borderColor: '#333',
-                            borderWidth: 1,
                             callbacks: {
                                 label: function(context) {
-                                    return context.dataset.label + ': $' + formatNumber(context.raw);
+                                    return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
                                 }
                             }
                         }
                     },
                     scales: {
-                        x: { 
-                            ticks: { color: '#333', font: { size: 12, weight: '600' } },
-                            grid: { display: false }
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#333', font: { size: 12, weight: '600' } }
                         },
-                        y: { 
-                            ticks: { 
+                        y: {
+                            grid: { color: 'rgba(0, 0, 0, 0.1)' },
+                            ticks: {
                                 color: '#333',
                                 font: { size: 12 },
                                 callback: function(value) {
-                                    return '$' + (value / 1000000).toFixed(1) + 'M';
+                                    return '$' + (value / 1000).toFixed(0) + 'k';
                                 }
-                            },
-                            grid: { color: 'rgba(51, 51, 51, 0.1)' }
+                            }
                         }
-                    },
-                    animation: {
-                        duration: 1500,
-                        easing: 'easeOutCubic'
                     }
                 }
             });
         }
         
         /**
-         * Create pie chart showing cost breakdown
-         * @param {Object} result - Complete calculation results
+         * Create cost breakdown pie chart
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {Object} data - TCO calculation results
+         * @return {Chart} Chart.js instance
          */
-        function createPieChart(result) {
-            const { airCooling, immersionCooling } = result;
+        function createPieChart(ctx, data, mode = 'single') {
+            const { airCooling, immersionCooling } = data;
             
-            if (pieChart) pieChart.destroy();
-            
-            const ctx = document.getElementById('pieChart').getContext('2d');
-            pieChart = new Chart(ctx, {
+            return new Chart(ctx, {
                 type: 'pie',
                 data: {
-                    labels: ['Air CAPEX', 'Air OPEX', 'Immersion CAPEX', 'Immersion OPEX'],
+                    labels: [
+                        'Air CAPEX', 'Air OPEX',
+                        'Immersion CAPEX', 'Immersion OPEX'
+                    ],
                     datasets: [{
                         data: [
                             airCooling.costs.capex,
-                            airCooling.costs.annualOpex * 5, // 5 year OPEX for comparison
+                            airCooling.costs.annualOpex * data.parameters.analysisYears,
                             immersionCooling.costs.capex,
-                            immersionCooling.costs.annualOpex * 5
+                            immersionCooling.costs.annualOpex * data.parameters.analysisYears
                         ],
                         backgroundColor: [
                             colors.airCooling.primary,
@@ -844,25 +954,21 @@ function getHTML() {
                             colors.immersion.secondary
                         ],
                         borderColor: '#fff',
-                        borderWidth: 3,
-                        hoverBorderWidth: 5
+                        borderWidth: 3
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    maintainAspectRatio: true,
+                    aspectRatio: 1,
                     plugins: {
-                        title: {
-                            display: false
-                        },
                         legend: {
                             position: 'bottom',
                             labels: {
                                 color: '#333',
                                 font: { size: 12, weight: '600' },
                                 usePointStyle: true,
-                                pointStyle: 'circle',
-                                padding: 15
+                                padding: 20
                             }
                         },
                         tooltip: {
@@ -871,77 +977,62 @@ function getHTML() {
                             bodyColor: '#fff',
                             callbacks: {
                                 label: function(context) {
-                                    const percentage = ((context.raw / context.dataset.data.reduce((a, b) => a + b)) * 100).toFixed(1);
-                                    return context.label + ': $' + formatNumber(context.raw) + ' (' + percentage + '%)';
+                                    const percentage = ((context.parsed / context.dataset.data.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+                                    return context.label + ': $' + context.parsed.toLocaleString() + ' (' + percentage + '%)';
                                 }
                             }
                         }
-                    },
-                    animation: {
-                        duration: 2000,
-                        easing: 'easeOutBounce'
                     }
                 }
             });
         }
         
         /**
-         * Create line chart showing cumulative savings over time
-         * @param {Object} result - Complete calculation results
+         * Create savings timeline chart
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {Object} data - TCO calculation results
+         * @return {Chart} Chart.js instance
          */
-        function createSavingsChart(result) {
-            const { comparison, parameters } = result;
-            
-            if (savingsChart) savingsChart.destroy();
-            
-            // Calculate cumulative savings over time
-            const years = Array.from({ length: parameters.analysisYears }, (_, i) => i + 1);
-            const cumulativeSavings = years.map(year => {
-                return comparison.savings.annualSavings * year - comparison.savings.capexDifference;
+        function createSavingsChart(ctx, data, mode = 'single') {
+            const yearsData = Array.from({length: data.parameters.analysisYears}, (_, i) => i + 1);
+            const cumulativeSavings = yearsData.map(year => {
+                // Calculate cumulative savings with discount factor
+                let cumulative = 0;
+                for (let y = 1; y <= year; y++) {
+                    const discountFactor = Math.pow(1 + (data.parameters.discountRate / 100), y);
+                    cumulative += data.comparison.savings.annualSavings / discountFactor;
+                }
+                return Math.round(cumulative - data.comparison.savings.capexDifference);
             });
             
-            const ctx = document.getElementById('savingsChart').getContext('2d');
-            savingsChart = new Chart(ctx, {
+            return new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: years,
+                    labels: yearsData.map(year => \`Year \${year}\`),
                     datasets: [{
                         label: 'Cumulative Savings',
                         data: cumulativeSavings,
+                        backgroundColor: colors.accent.success,
                         borderColor: colors.accent.success,
-                        backgroundColor: 'rgba(150, 206, 180, 0.1)',
                         borderWidth: 4,
                         fill: true,
                         tension: 0.4,
-                        pointBackgroundColor: colors.accent.success,
-                        pointBorderColor: '#fff',
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: colors.accent.success,
                         pointBorderWidth: 3,
-                        pointRadius: 6,
-                        pointHoverRadius: 8
-                    }, {
-                        label: 'Break-even Line',
-                        data: years.map(() => 0),
-                        borderColor: '#999',
-                        borderWidth: 2,
-                        borderDash: [5, 5],
-                        fill: false,
-                        pointRadius: 0
+                        pointRadius: 6
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    maintainAspectRatio: true,
+                    aspectRatio: mode === 'grid' ? 1.4 : 2,
                     plugins: {
-                        title: {
-                            display: false
-                        },
                         legend: {
                             display: true,
                             labels: {
                                 color: '#333',
-                                font: { size: 14, weight: '600' },
-                                usePointStyle: true,
-                                pointStyle: 'line'
+                                font: { size: 14, weight: '600' }
                             }
                         },
                         tooltip: {
@@ -950,229 +1041,133 @@ function getHTML() {
                             bodyColor: '#fff',
                             callbacks: {
                                 label: function(context) {
-                                    const value = context.raw;
-                                    const prefix = value >= 0 ? 'Savings: $' : 'Investment: $';
-                                    return prefix + formatNumber(Math.abs(value));
-                                },
-                                afterLabel: function(context) {
-                                    if (context.datasetIndex === 0) {
-                                        const payback = comparison.savings.paybackYears;
-                                        return context.parsed.x >= payback ? 'ROI Positive' : 'Payback Period';
-                                    }
-                                    return '';
+                                    const value = context.parsed.y;
+                                    const prefix = value >= 0 ? 'Savings: $' : 'Loss: -$';
+                                    return prefix + Math.abs(value).toLocaleString();
                                 }
                             }
                         }
                     },
                     scales: {
                         x: {
-                            title: {
-                                display: true,
-                                text: 'Years',
-                                color: '#333',
-                                font: { size: 14, weight: '600' }
-                            },
-                            ticks: { color: '#333', font: { size: 12 } },
-                            grid: { color: 'rgba(51, 51, 51, 0.1)' }
+                            grid: { display: false },
+                            ticks: { color: '#333', font: { size: 12, weight: '600' } }
                         },
                         y: {
-                            title: {
-                                display: true,
-                                text: 'Cumulative Savings ($)',
-                                color: '#333',
-                                font: { size: 14, weight: '600' }
-                            },
+                            grid: { color: 'rgba(0, 0, 0, 0.1)' },
                             ticks: {
                                 color: '#333',
                                 font: { size: 12 },
                                 callback: function(value) {
-                                    return '$' + (value / 1000000).toFixed(1) + 'M';
+                                    return '$' + (value / 1000).toFixed(0) + 'k';
                                 }
-                            },
-                            grid: { color: 'rgba(51, 51, 51, 0.1)' }
+                            }
                         }
-                    },
-                    animation: {
-                        duration: 2000,
-                        easing: 'easeInOutQuart'
                     }
                 }
             });
         }
         
         /**
-         * Format numbers with proper thousands separators for display
-         * @param {number} num - Number to format
-         * @returns {string} Formatted number string with commas
-         */
-        function formatNumber(num) {
-            return new Intl.NumberFormat('en-US').format(Math.round(num));
-        }
-        
-        /**
-         * Automatically calculate the recommended number of immersion tanks
-         * based on the total power requirements from air cooling setup
-         * This ensures equivalent computing capacity between systems
-         */
-        function updateImmersionTanks() {
-            // Get current air cooling configuration
-            const airRacks = parseInt(document.getElementById('airRacks').value) || 0;
-            const airPower = parseFloat(document.getElementById('airPowerPerRack').value) || 0;
-            
-            // Calculate total IT power requirement
-            const totalPower = airRacks * airPower;
-            
-            // Get immersion tank capacity
-            const immersionPowerPerTank = parseFloat(document.getElementById('immersionPowerPerTank').value) || 23;
-            
-            // Calculate minimum tanks needed (round up to ensure sufficient capacity)
-            const recommendedTanks = Math.ceil(totalPower / immersionPowerPerTank);
-            
-            // Update the form field
-            document.getElementById('immersionTanks').value = recommendedTanks;
-        }
-        
-        // Event listeners
-        document.getElementById('airRacks').addEventListener('input', updateImmersionTanks);
-        document.getElementById('airPowerPerRack').addEventListener('input', updateImmersionTanks);
-        document.getElementById('immersionPowerPerTank').addEventListener('input', updateImmersionTanks);
-        
-        // Initialize
-        updateImmersionTanks();
-        /**
-         * Client-side input validation function
-         * @param {Object} data - Form data to validate
-         * @throws {Error} When validation fails
+         * Client-side input validation
+         * @param {Object} data - Form input data
+         * @throws {Error} If validation fails
          */
         function validateInputs(data) {
-            // Check for NaN values
-            const numericFields = [
-                'airRacks', 'airPowerPerRack', 'airRackCost', 'airPUE',
-                'immersionTanks', 'immersionPowerPerTank', 'immersionTankCost', 'immersionPUE',
-                'analysisYears', 'electricityPrice', 'discountRate', 'maintenanceCost'
-            ];
-            
-            for (const field of numericFields) {
-                if (isNaN(data[field]) || data[field] === null || data[field] === undefined) {
-                    throw new Error(field + ' must be a valid number');
-                }
+            if (!Number.isInteger(data.airRacks) || data.airRacks < 1 || data.airRacks > 1000) {
+                throw new Error('Air racks must be between 1 and 1000');
             }
-            
-            // Basic range validation (mirrors server-side validation)
-            if (data.airRacks < 1 || data.airRacks > 1000) {
-                throw new Error('Number of air racks must be between 1 and 1000');
+            if (!Number.isInteger(data.immersionTanks) || data.immersionTanks < 1 || data.immersionTanks > 500) {
+                throw new Error('Immersion tanks must be between 1 and 500');
             }
-            if (data.immersionTanks < 1 || data.immersionTanks > 500) {
-                throw new Error('Number of immersion tanks must be between 1 and 500');
-            }
-            if (data.airPUE < 1.0 || data.airPUE > 3.0) {
-                throw new Error('Air cooling PUE must be between 1.0 and 3.0');
-            }
-            if (data.immersionPUE < 1.0 || data.immersionPUE > 2.0) {
-                throw new Error('Immersion cooling PUE must be between 1.0 and 2.0');
-            }
-            if (data.analysisYears < 1 || data.analysisYears > 20) {
-                throw new Error('Analysis period must be between 1 and 20 years');
-            }
-            
-            // Business logic validation
-            if (data.immersionPUE > data.airPUE) {
-                console.warn('Warning: Immersion PUE is higher than air cooling PUE');
+            if (!Number.isInteger(data.analysisYears) || data.analysisYears < 1 || data.analysisYears > 20) {
+                throw new Error('Analysis years must be between 1 and 20');
             }
         }
         
-        console.log('🧊 TCO Calculator loaded successfully! Ready for professional analysis.'); 
+        /**
+         * Display comprehensive calculation results
+         * @param {Object} data - TCO calculation results from API
+         */
+        function displayResults(data) {
+            const { airCooling, immersionCooling, comparison, parameters } = data;
+            
+            // Update savings highlight
+            const savingsHighlight = document.getElementById('savingsHighlight');
+            const totalSavings = comparison.savings.totalSavings;
+            const isPositive = totalSavings >= 0;
+            
+            savingsHighlight.innerHTML = \`
+                <h2>\${isPositive ? '💰 Total Savings' : '💸 Additional Cost'}</h2>
+                <div class="savings-value">\${isPositive ? '$' : '-$'}\${Math.abs(totalSavings).toLocaleString()}</div>
+                <p>Over \${parameters.analysisYears} year\${parameters.analysisYears > 1 ? 's' : ''} • ROI: \${comparison.savings.roiPercent}% • Payback: \${comparison.savings.paybackYears} years</p>
+            \`;
+            
+            if (!isPositive) {
+                savingsHighlight.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+            }
+            
+            // Update results grid
+            const resultsGrid = document.getElementById('resultsGrid');
+            resultsGrid.innerHTML = \`
+                <div class="result-card air">
+                    <h3>🌪️ Air Cooling System</h3>
+                    <div class="result-subtitle">Equipment: \${airCooling.equipment.count} × 42U Racks</div>
+                    <div class="result-value">$\${airCooling.costs.totalTCO.toLocaleString()}</div>
+                    <div class="result-subtitle">Total Cost of Ownership</div>
+                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
+                        CAPEX: $\${airCooling.costs.capex.toLocaleString()}<br>
+                        Annual OPEX: $\${airCooling.costs.annualOpex.toLocaleString()}<br>
+                        Power: \${airCooling.equipment.totalPowerKW}kW • PUE: \${airCooling.equipment.pue}
+                    </div>
+                </div>
+                
+                <div class="result-card immersion">
+                    <h3>🧊 Immersion Cooling</h3>
+                    <div class="result-subtitle">Equipment: \${immersionCooling.equipment.count} × Immersion Tanks</div>
+                    <div class="result-value">$\${immersionCooling.costs.totalTCO.toLocaleString()}</div>
+                    <div class="result-subtitle">Total Cost of Ownership</div>
+                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
+                        CAPEX: $\${immersionCooling.costs.capex.toLocaleString()}<br>
+                        Annual OPEX: $\${immersionCooling.costs.annualOpex.toLocaleString()}<br>
+                        Power: \${immersionCooling.equipment.totalPowerKW}kW • PUE: \${immersionCooling.equipment.pue}
+                    </div>
+                </div>
+                
+                <div class="result-card savings">
+                    <h3>⚡ Efficiency Benefits</h3>
+                    <div class="result-subtitle">PUE Improvement</div>
+                    <div class="result-value">\${comparison.efficiency.pueImprovement}%</div>
+                    <div class="result-subtitle">Power Usage Effectiveness</div>
+                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
+                        Energy Savings: \${comparison.efficiency.annualEnergySavingsMWh} MWh/year<br>
+                        CO₂ Reduction: \${comparison.efficiency.annualCarbonReductionTons} tons/year<br>
+                        Annual Savings: $\${comparison.savings.annualSavings.toLocaleString()}
+                    </div>
+                </div>
+            \`;
+            
+            // Initialize charts with default view
+            updateSingleChart(data, currentView);
+        }
     </script>
 </body>
-</html>`;
-}
-
-/**
- * Create HTTP server with comprehensive TCO calculation API
- * Serves both the web interface and REST API endpoints
- * @param {number} port - Port number to bind the server
- * @returns {http.Server} HTTP server instance
- */
-function createServer(port) {
-  const server = http.createServer((req, res) => {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
-    if (req.method === 'OPTIONS') {
-      res.writeHead(200);
-      res.end();
+</html>`);
       return;
     }
-    
-    // Handle TCO calculation API endpoint
-    // POST /api/calculate - Accepts JSON with calculation parameters
-    if (req.url === '/api/calculate' && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => {
-        body += chunk.toString();
-      });
-      
-      req.on('end', () => {
-        try {
-          // Parse and validate JSON input
-          if (!body.trim()) {
-            throw new Error('Request body is empty');
-          }
-          
-          const data = JSON.parse(body);
-          
-          // Additional API-level validation
-          if (typeof data !== 'object' || data === null) {
-            throw new Error('Invalid JSON: Expected object');
-          }
-          
-          // Perform TCO calculation with validation
-          const result = calculateTCO(data);
-          
-          res.setHeader('Content-Type', 'application/json');
-          res.writeHead(200);
-          res.end(JSON.stringify(result, null, 2));
-        } catch (error) {
-          // Enhanced error handling with appropriate HTTP status codes
-          const isValidationError = error.message.includes('must be between') || 
-                                   error.message.includes('Invalid input');
-          const statusCode = isValidationError ? 400 : 500;
-          
-          res.setHeader('Content-Type', 'application/json');
-          res.writeHead(statusCode);
-          res.end(JSON.stringify({ 
-            error: error.message,
-            code: isValidationError ? 'VALIDATION_ERROR' : 'CALCULATION_ERROR',
-            timestamp: new Date().toISOString()
-          }));
-        }
-      });
-      return;
-    }
-    
-    // Serve main application page
-    // GET / - Returns complete HTML interface
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.writeHead(200);
-    res.end(getHTML());
-  });
 
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error('❌ Port ' + port + ' is already in use');
-      process.exit(1);
-    } else {
-      console.error('❌ Server error:', err);
-      process.exit(1);
-    }
+    // 404 for all other routes
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
   });
 
   return server;
 }
 
-// Main function
+/**
+ * Main function to start the TCO Calculator server
+ * Finds available port and starts the HTTP server
+ */
 async function main() {
   try {
     console.log('🔍 Finding available port...');
@@ -1184,7 +1179,7 @@ async function main() {
       console.log('╔══════════════════════════════════════════════╗');
       console.log('║           🧊 TCO Calculator Started         ║');
       console.log('╠══════════════════════════════════════════════╣');
-      console.log('║  🌐 URL: http://localhost:' + port.toString().padEnd(19) + '║');
+      console.log(`║  🌐 URL: http://localhost:${port}               ║`);
       console.log('║  📊 Status: Ready for calculations          ║');
       console.log('║  ✅ All systems operational                 ║');
       console.log('╚══════════════════════════════════════════════╝');
@@ -1196,15 +1191,14 @@ async function main() {
       console.log('  • Auto-calculation of equipment needs');
       console.log('  • ROI and payback period analysis');
       console.log('');
-      console.log('💡 Open your browser and navigate to: http://localhost:' + port);
-      console.log('');
+      console.log(`💡 Open your browser and navigate to: http://localhost:${port}`);
     });
 
-    // Graceful shutdown
+    // Graceful shutdown handling
     process.on('SIGINT', () => {
-      console.log('\\n🛑 Shutting down TCO Calculator...');
+      console.log('\n🛑 Shutting down TCO Calculator server...');
       server.close(() => {
-        console.log('✅ Server closed successfully');
+        console.log('✅ Server stopped successfully');
         process.exit(0);
       });
     });
@@ -1215,9 +1209,9 @@ async function main() {
   }
 }
 
-// Start the server
+// Start the server if this file is run directly
 if (require.main === module) {
   main();
 }
 
-module.exports = { calculateTCO, findAvailablePort, createServer };
+module.exports = { calculateTCO, createServer, findAvailablePort };
