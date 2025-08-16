@@ -1,20 +1,47 @@
-const http = require('http');
-const net = require('net');
+/**
+ * =============================================================================
+ * TCO CALCULATOR - IMMERSION COOLING vs AIR COOLING
+ * =============================================================================
+ * 
+ * Одностраничное Node.js приложение для расчета общей стоимости владения (TCO)
+ * систем охлаждения дата-центров. Сравнивает традиционное воздушное охлаждение
+ * с инновационным иммерсионным охлаждением.
+ * 
+ * Архитектура: Single-file application (все в одном файле)
+ * Технологии: Node.js (нативный HTTP), Chart.js, CSS Grid
+ * Развертывание: Docker container или прямой запуск Node.js
+ * 
+ * Автор: TCO Calculator System
+ * Версия: 1.0
+ * Дата: 2025-08-16
+ * =============================================================================
+ */
+
+// =============================================================================
+// ИМПОРТЫ МОДУЛЕЙ
+// =============================================================================
+const http = require('http');  // HTTP сервер для обработки запросов
+const net = require('net');    // TCP сеть для проверки доступности портов
+
+// =============================================================================
+// УТИЛИТЫ ДЛЯ РАБОТЫ С ПОРТАМИ
+// =============================================================================
 
 /**
- * Check if a port is available
- * @param {number} port - Port number to check
- * @return {Promise<boolean>} True if port is available
+ * Проверяет доступность порта
+ * Создает временный TCP сервер для проверки возможности привязки к порту
+ * @param {number} port - Номер порта для проверки
+ * @return {Promise<boolean>} True если порт свободен
  */
 function checkPort(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.listen(port, (err) => {
       if (err) {
-        resolve(false);
+        resolve(false);  // Порт занят или недоступен
       } else {
         server.close(() => {
-          resolve(true);
+          resolve(true);   // Порт свободен
         });
       }
     });
@@ -22,34 +49,42 @@ function checkPort(port) {
 }
 
 /**
- * Find the first available port starting from the given port
- * @param {number} startPort - Starting port number (default: 4000)
- * @return {Promise<number>} Available port number
+ * Находит первый доступный порт начиная с указанного
+ * Проверяет диапазон в 10 портов для гибкости в Docker/development
+ * @param {number} startPort - Начальный порт (по умолчанию: 4000)
+ * @return {Promise<number>} Номер доступного порта
  */
 async function findAvailablePort(startPort = 4000) {
   let port = startPort;
-  while (port < startPort + 10) {
+  while (port < startPort + 10) {  // Проверяем диапазон 10 портов
     if (await checkPort(port)) {
-      return port;
+      return port;  // Нашли свободный порт
     }
-    port++;
+    port++;  // Переходим к следующему порту
   }
-  throw new Error('No available ports found in range');
+  throw new Error('No available ports found in range');  // Все порты заняты
 }
 
+// =============================================================================
+// ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
+// =============================================================================
+
 /**
- * Validate input parameters for TCO calculation
- * @param {Object} params - Input parameters to validate
- * @throws {Error} If validation fails
+ * Валидирует входные параметры для расчета TCO
+ * Проверяет все числовые значения на корректность диапазонов
+ * Предотвращает некорректные расчеты и потенциальные ошибки
+ * @param {Object} params - Параметры для валидации
+ * @throws {Error} Если валидация не пройдена
  */
 function validateInput(params) {
+  // Деструктуризация параметров для удобства работы
   const {
     airRacks, airPowerPerRack, airRackCost, airPUE,
     immersionTanks, immersionPowerPerTank, immersionTankCost, immersionPUE,
     analysisYears, electricityPrice, discountRate, maintenanceCost
   } = params;
 
-  // Air cooling validation
+  // Валидация параметров воздушного охлаждения
   if (!Number.isInteger(airRacks) || airRacks < 1 || airRacks > 1000) {
     throw new Error('Air racks must be integer between 1 and 1000');
   }
@@ -63,7 +98,7 @@ function validateInput(params) {
     throw new Error('Air PUE must be between 1.0 and 3.0');
   }
 
-  // Immersion cooling validation
+  // Валидация параметров иммерсионного охлаждения
   if (!Number.isInteger(immersionTanks) || immersionTanks < 1 || immersionTanks > 500) {
     throw new Error('Immersion tanks must be integer between 1 and 500');
   }
@@ -77,7 +112,7 @@ function validateInput(params) {
     throw new Error('Immersion PUE must be between 1.0 and 2.0');
   }
 
-  // Analysis parameters validation
+  // Валидация параметров анализа
   if (!Number.isInteger(analysisYears) || analysisYears < 1 || analysisYears > 20) {
     throw new Error('Analysis years must be integer between 1 and 20');
   }
@@ -92,71 +127,91 @@ function validateInput(params) {
   }
 }
 
+// =============================================================================
+// ОСНОВНАЯ ФУНКЦИЯ РАСЧЕТА TCO
+// =============================================================================
+
 /**
- * Calculate Total Cost of Ownership with comprehensive financial analysis
- * @param {Object} params - Calculation parameters
- * @return {Object} Detailed TCO analysis results
+ * Рассчитывает общую стоимость владения (TCO) с комплексным финансовым анализом
+ * Включает расчеты CAPEX, OPEX, NPV, ROI, Payback Period
+ * @param {Object} params - Параметры расчета
+ * @return {Object} Детализированные результаты TCO анализа
  */
 function calculateTCO(params) {
-  // Extract and set defaults for all parameters
+  // Извлечение параметров с установкой значений по умолчанию
   const {
-    airRacks, 
-    airPowerPerRack = 20, 
-    airRackCost = 50000, 
-    airPUE = 1.8,
-    immersionTanks, 
-    immersionPowerPerTank = 23, 
-    immersionTankCost = 80000, 
-    immersionPUE = 1.1,
-    analysisYears, 
-    electricityPrice = 0.12, 
-    discountRate = 5, 
-    maintenanceCost = 3
+    airRacks,                           // Количество воздушных стоек
+    airPowerPerRack = 20,              // Мощность на стойку (кВт)
+    airRackCost = 50000,               // Стоимость воздушной стойки ($)
+    airPUE = 1.8,                      // PUE воздушного охлаждения
+    immersionTanks,                    // Количество иммерсионных танков
+    immersionPowerPerTank = 23,        // Мощность на танк (кВт)
+    immersionTankCost = 80000,         // Стоимость иммерсионного танка ($)
+    immersionPUE = 1.1,                // PUE иммерсионного охлаждения
+    analysisYears,                     // Период анализа (лет)
+    electricityPrice = 0.12,           // Цена электричества ($/кВт⋅ч)
+    discountRate = 5,                  // Ставка дисконтирования (%)
+    maintenanceCost = 3                // Стоимость обслуживания (% от CAPEX)
   } = params;
 
-  // Input validation
+  // Валидация входных данных
   validateInput(params);
 
-  // Convert percentage rates to decimals
-  const discountRateDecimal = discountRate / 100;
-  const maintenanceRateDecimal = maintenanceCost / 100;
+  // Преобразование процентных ставок в десятичные дроби
+  const discountRateDecimal = discountRate / 100;      // Ставка дисконтирования
+  const maintenanceRateDecimal = maintenanceCost / 100; // Ставка обслуживания
 
-  // Air cooling calculations
-  const airTotalPower = airRacks * airPowerPerRack; // Total IT power in kW
-  const airTotalWithPUE = airTotalPower * airPUE; // Total facility power including cooling
-  const airCAPEX = airRacks * airRackCost; // Capital expenditure
-  const airAnnualElectricity = airTotalWithPUE * 8760 * electricityPrice; // 8760 hours per year
-  const airAnnualMaintenance = airCAPEX * maintenanceRateDecimal; // Annual maintenance cost
-  const airAnnualOPEX = airAnnualElectricity + airAnnualMaintenance; // Total annual operating cost
+  // =============================================================================
+  // РАСЧЕТЫ ДЛЯ ВОЗДУШНОГО ОХЛАЖДЕНИЯ
+  // =============================================================================
+  
+  const airTotalPower = airRacks * airPowerPerRack;           // Общая IT мощность (кВт)
+  const airTotalWithPUE = airTotalPower * airPUE;            // Общая мощность с учетом PUE
+  const airCAPEX = airRacks * airRackCost;                   // Капитальные затраты
+  const airAnnualElectricity = airTotalWithPUE * 8760 * electricityPrice; // Годовая стоимость электричества
+  const airAnnualMaintenance = airCAPEX * maintenanceRateDecimal;         // Годовые затраты на обслуживание
+  const airAnnualOPEX = airAnnualElectricity + airAnnualMaintenance; // Общие годовые операционные затраты
 
-  // Immersion cooling calculations  
-  const immersionTotalPower = immersionTanks * immersionPowerPerTank;
-  const immersionTotalWithPUE = immersionTotalPower * immersionPUE;
-  const immersionCAPEX = immersionTanks * immersionTankCost;
-  const immersionAnnualElectricity = immersionTotalWithPUE * 8760 * electricityPrice;
-  const immersionAnnualMaintenance = immersionCAPEX * maintenanceRateDecimal;
-  const immersionAnnualOPEX = immersionAnnualElectricity + immersionAnnualMaintenance;
+  // =============================================================================
+  // РАСЧЕТЫ ДЛЯ ИММЕРСИОННОГО ОХЛАЖДЕНИЯ
+  // =============================================================================
+  
+  const immersionTotalPower = immersionTanks * immersionPowerPerTank;         // Общая IT мощность (кВт)
+  const immersionTotalWithPUE = immersionTotalPower * immersionPUE;          // Общая мощность с учетом PUE
+  const immersionCAPEX = immersionTanks * immersionTankCost;                 // Капитальные затраты
+  const immersionAnnualElectricity = immersionTotalWithPUE * 8760 * electricityPrice; // Годовая стоимость электричества
+  const immersionAnnualMaintenance = immersionCAPEX * maintenanceRateDecimal;         // Годовые затраты на обслуживание
+  const immersionAnnualOPEX = immersionAnnualElectricity + immersionAnnualMaintenance; // Общие годовые операционные затраты
 
-  // Multi-year TCO calculation with Net Present Value (NPV)
-  let airTCO = airCAPEX; // Start with initial CAPEX
+  // =============================================================================
+  // МНОГОЛЕТНИЙ РАСЧЕТ TCO С ЧИСТОЙ ПРИВЕДЕННОЙ СТОИМОСТЬЮ (NPV)
+  // =============================================================================
+  
+  let airTCO = airCAPEX;           // Начинаем с начальных капитальных затрат
   let immersionTCO = immersionCAPEX;
 
-  // Add discounted OPEX for each year
+  // Добавляем дисконтированные OPEX для каждого года
   for (let year = 1; year <= analysisYears; year++) {
-    const discountFactor = Math.pow(1 + discountRateDecimal, year);
-    airTCO += airAnnualOPEX / discountFactor;
-    immersionTCO += immersionAnnualOPEX / discountFactor;
+    const discountFactor = Math.pow(1 + discountRateDecimal, year); // Фактор дисконтирования
+    airTCO += airAnnualOPEX / discountFactor;                       // Дисконтированные OPEX воздушного охлаждения
+    immersionTCO += immersionAnnualOPEX / discountFactor;           // Дисконтированные OPEX иммерсионного охлаждения
   }
 
-  // Financial analysis calculations
-  const totalSavings = airTCO - immersionTCO;
-  const annualSavings = airAnnualOPEX - immersionAnnualOPEX;
-  const capexDifference = immersionCAPEX - airCAPEX; // Additional upfront investment
-  const paybackYears = capexDifference > 0 ? capexDifference / annualSavings : 0;
-  const roiPercent = totalSavings / immersionCAPEX * 100;
+  // =============================================================================
+  // ФИНАНСОВЫЙ АНАЛИЗ И КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ
+  // =============================================================================
+  
+  const totalSavings = airTCO - immersionTCO;                      // Общая экономия за период анализа
+  const annualSavings = airAnnualOPEX - immersionAnnualOPEX;       // Годовая экономия
+  const capexDifference = immersionCAPEX - airCAPEX;               // Дополнительные первоначальные инвестиции
+  const paybackYears = capexDifference > 0 ? capexDifference / annualSavings : 0; // Период окупаемости
+  const roiPercent = totalSavings / immersionCAPEX * 100;          // Рентабельность инвестиций (ROI)
 
-  // Energy efficiency calculations
-  const pueImprovement = ((airPUE - immersionPUE) / airPUE) * 100;
+  // =============================================================================
+  // РАСЧЕТЫ ЭНЕРГОЭФФЕКТИВНОСТИ
+  // =============================================================================
+  
+  const pueImprovement = ((airPUE - immersionPUE) / airPUE) * 100; // Улучшение PUE в процентах
   const annualEnergySavings = (airTotalWithPUE - immersionTotalWithPUE) * 8760 / 1000; // MWh per year
   const carbonReduction = (annualEnergySavings * 1000 * 0.4) / 1000; // tons CO2 per year
 

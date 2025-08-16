@@ -164,9 +164,6 @@ $RECYCLE.BIN/
 .Trash-*
 .nfs*
 
-# Docker
-.dockerignore
-
 # Database
 *.db
 *.sqlite
@@ -224,3 +221,18 @@ pnpm-lock.yaml
 
 # Keep package-lock.json for npm
 !package-lock.json
+
+# ==============================================
+# PROJECT-SPECIFIC EXCLUSIONS
+# ==============================================
+
+# Documentation and analysis files (keep docs/ excluded)
+docs/
+
+# Keep only essential application files:
+# - tco-calculator.js (main application)
+# - Dockerfile (for container deployment) 
+# - docker-compose.simple.yml (for simple deployment)
+# - CLAUDE.md (project instructions)
+# - .gitignore (this file)
+# - archive/ (contains all non-essential files)
