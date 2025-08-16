@@ -223,12 +223,98 @@ function calculateTCO(params) {
 }
 
 /**
- * Create and start the HTTP server
+ * Safely extract nested object properties with fallback values
+ * @param {Object} obj - Source object
+ * @param {string} path - Dot notation path (e.g., 'comparison.savings.totalSavings')
+ * @param {*} defaultValue - Default value if path doesn't exist
+ * @return {*} Value at path or default value
+ */
+function safeGet(obj, path, defaultValue = null) {
+  try {
+    const keys = path.split('.');
+    let current = obj;
+    
+    for (const key of keys) {
+      if (current === null || current === undefined || typeof current !== 'object') {
+        return defaultValue;
+      }
+      current = current[key];
+    }
+    
+    return current !== undefined ? current : defaultValue;
+  } catch (error) {
+    console.warn(`⚠️ Safe extraction failed for path '${path}':`, error.message);
+    return defaultValue;
+  }
+}
+
+/**
+ * Validate TCO calculation data structure
+ * @param {Object} data - TCO calculation result data
+ * @throws {Error} If data structure is invalid
+ */
+function validateTCOData(data) {
+  const requiredPaths = [
+    'airCooling.costs.totalTCO',
+    'immersionCooling.costs.totalTCO',
+    'comparison.savings.totalSavings',
+    'comparison.savings.roiPercent',
+    'comparison.savings.paybackYears',
+    'comparison.efficiency.pueImprovement',
+    'parameters.analysisYears'
+  ];
+  
+  const missingPaths = [];
+  
+  for (const path of requiredPaths) {
+    const value = safeGet(data, path);
+    if (value === null || value === undefined) {
+      missingPaths.push(path);
+    }
+  }
+  
+  if (missingPaths.length > 0) {
+    throw new Error(`Missing required data paths: ${missingPaths.join(', ')}`);
+  }
+  
+  // Validate numeric values
+  const numericPaths = [
+    'comparison.savings.totalSavings',
+    'comparison.savings.roiPercent',
+    'comparison.savings.paybackYears',
+    'parameters.analysisYears'
+  ];
+  
+  for (const path of numericPaths) {
+    const value = safeGet(data, path);
+    if (typeof value !== 'number' || isNaN(value)) {
+      throw new Error(`Invalid numeric value at path '${path}': ${value}`);
+    }
+  }
+}
+
+/**
+ * Application health status for monitoring
+ */
+const healthStatus = {
+  startTime: Date.now(),
+  totalRequests: 0,
+  successfulCalculations: 0,
+  errors: 0,
+  lastError: null,
+  lastSuccessfulCalculation: null
+};
+
+/**
+ * Create and start the HTTP server with comprehensive error handling
  * @param {number} port - Port number for the server
  * @return {http.Server} HTTP server instance
  */
 function createServer(port) {
   const server = http.createServer((req, res) => {
+    const startTime = Date.now();
+    healthStatus.totalRequests++;
+    
     // Enable CORS for cross-origin requests
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -241,36 +327,165 @@ function createServer(port) {
       return;
     }
 
-    // API endpoint for TCO calculations
+    // Health check endpoint for container monitoring
+    if (req.method === 'GET' && req.url === '/health') {
+      try {
+        const uptime = Date.now() - healthStatus.startTime;
+        const uptimeSeconds = Math.floor(uptime / 1000);
+        const uptimeMinutes = Math.floor(uptimeSeconds / 60);
+        const uptimeHours = Math.floor(uptimeMinutes / 60);
+        
+        const health = {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          uptime: {
+            milliseconds: uptime,
+            human: `${uptimeHours}h ${uptimeMinutes % 60}m ${uptimeSeconds % 60}s`
+          },
+          metrics: {
+            totalRequests: healthStatus.totalRequests,
+            successfulCalculations: healthStatus.successfulCalculations,
+            errors: healthStatus.errors,
+            successRate: healthStatus.totalRequests > 0 
+              ? ((healthStatus.successfulCalculations / healthStatus.totalRequests) * 100).toFixed(2) + '%'
+              : '0%'
+          },
+          lastError: healthStatus.lastError,
+          lastSuccessfulCalculation: healthStatus.lastSuccessfulCalculation,
+          memory: process.memoryUsage(),
+          nodeVersion: process.version,
+          platform: process.platform
+        };
+        
+        // Determine health status based on error rate
+        const errorRate = healthStatus.totalRequests > 0 
+          ? (healthStatus.errors / healthStatus.totalRequests) * 100 
+          : 0;
+        
+        if (errorRate > 50) {
+          health.status = 'critical';
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+        } else if (errorRate > 20) {
+          health.status = 'degraded';
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+        } else {
+          health.status = 'healthy';
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+        }
+        
+        res.end(JSON.stringify(health, null, 2));
+        return;
+      } catch (error) {
+        console.error('❌ Health check error:', error.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'error', message: error.message }));
+        return;
+      }
+    }
+
+    // API endpoint for TCO calculations with enhanced error handling
     if (req.method === 'POST' && req.url === '/api/calculate') {
       let body = '';
+      
       req.on('data', chunk => {
         body += chunk.toString();
       });
       
       req.on('end', () => {
         try {
-          const data = JSON.parse(body);
+          const requestStartTime = Date.now();
+          
+          // Parse and validate request body
+          let data;
+          try {
+            data = JSON.parse(body);
+          } catch (parseError) {
+            throw new Error(`Invalid JSON in request body: ${parseError.message}`);
+          }
+          
           console.log('📊 Processing TCO calculation request:', {
-            airRacks: data.airRacks,
-            immersionTanks: data.immersionTanks,
-            years: data.analysisYears
+            airRacks: safeGet(data, 'airRacks', 'undefined'),
+            immersionTanks: safeGet(data, 'immersionTanks', 'undefined'),
+            years: safeGet(data, 'analysisYears', 'undefined'),
+            timestamp: new Date().toISOString()
           });
           
+          // Perform calculation with timeout protection
+          const calculationTimeout = setTimeout(() => {
+            throw new Error('Calculation timeout - operation took longer than 10 seconds');
+          }, 10000);
+          
           const result = calculateTCO(data);
+          clearTimeout(calculationTimeout);
+          
+          // Validate result data structure
+          try {
+            validateTCOData(result);
+          } catch (validationError) {
+            throw new Error(`Calculation result validation failed: ${validationError.message}`);
+          }
+          
+          const processingTime = Date.now() - requestStartTime;
+          
+          // Add performance metadata to result
+          result.metadata = {
+            processingTimeMs: processingTime,
+            timestamp: new Date().toISOString(),
+            version: '1.0.0',
+            requestId: 'req_' + Date.now()
+          };
           
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result, null, 2));
           
-          console.log('✅ Calculation completed:', {
-            totalSavings: result.comparison.savings.totalSavings,
-            payback: result.comparison.savings.paybackYears + ' years',
-            roi: result.comparison.savings.roiPercent + '%'
+          // Update health metrics
+          healthStatus.successfulCalculations++;
+          healthStatus.lastSuccessfulCalculation = new Date().toISOString();
+          
+          console.log('✅ Calculation completed successfully:', {
+            totalSavings: safeGet(result, 'comparison.savings.totalSavings', 'unknown'),
+            payback: safeGet(result, 'comparison.savings.paybackYears', 'unknown') + ' years',
+            roi: safeGet(result, 'comparison.savings.roiPercent', 'unknown') + '%',
+            processingTime: processingTime + 'ms',
+            requestId: result.metadata.requestId
           });
+          
         } catch (error) {
-          console.error('❌ API Error:', error.message);
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: error.message }));
+          const processingTime = Date.now() - startTime;
+          
+          // Update health metrics
+          healthStatus.errors++;
+          healthStatus.lastError = {
+            message: error.message,
+            timestamp: new Date().toISOString(),
+            processingTime: processingTime + 'ms'
+          };
+          
+          console.error('❌ API Error:', {
+            message: error.message,
+            stack: error.stack,
+            processingTime: processingTime + 'ms',
+            timestamp: new Date().toISOString()
+          });
+          
+          // Determine appropriate error code
+          let statusCode = 400;
+          if (error.message.includes('timeout')) {
+            statusCode = 408; // Request Timeout
+          } else if (error.message.includes('validation')) {
+            statusCode = 422; // Unprocessable Entity
+          } else if (error.message.includes('Invalid JSON')) {
+            statusCode = 400; // Bad Request
+          }
+          
+          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: error.message,
+            code: 'CALCULATION_ERROR',
+            timestamp: new Date().toISOString(),
+            requestId: 'req_' + Date.now(),
+            processingTime: processingTime
+          }));
         }
       });
       return;
@@ -428,6 +643,73 @@ function createServer(port) {
             border-radius: 20px;
             margin-bottom: 30px;
             box-shadow: 0 15px 35px rgba(76, 175, 80, 0.3);
+        }
+        .environmental-impact {
+            background: linear-gradient(135deg, #2E7D32 0%, #1B5E20 100%);
+            padding: 40px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(46, 125, 50, 0.4);
+            color: white;
+        }
+        .environmental-title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 800;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .environmental-subtitle {
+            text-align: center;
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 40px;
+        }
+        .environmental-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .environmental-card {
+            background: rgba(255, 255, 255, 0.95);
+            color: #1B5E20;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            border-top: 5px solid #4CAF50;
+            transition: transform 0.3s ease;
+        }
+        .environmental-card:hover {
+            transform: translateY(-5px);
+        }
+        .environmental-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+        .environmental-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin: 15px 0;
+            color: #2E7D32;
+        }
+        .environmental-label {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .environmental-context {
+            font-size: 0.9rem;
+            color: #666;
+            font-style: italic;
+        }
+        .gauge-container {
+            position: relative;
+            width: 200px;
+            height: 100px;
+            margin: 20px auto;
         }
         .savings-value {
             font-size: 3rem;
@@ -621,6 +903,7 @@ function createServer(port) {
                         <button class="view-btn active" onclick="switchView('comparison')" id="btn-comparison">📊 TCO Comparison</button>
                         <button class="view-btn" onclick="switchView('breakdown')" id="btn-breakdown">🥧 Cost Breakdown</button>
                         <button class="view-btn" onclick="switchView('timeline')" id="btn-timeline">📈 Savings Timeline</button>
+                        <button class="view-btn" onclick="switchView('environmental')" id="btn-environmental">🌱 Environmental Impact</button>
                         <button class="view-btn" onclick="switchView('grid')" id="btn-grid">⊞ All Charts</button>
                     </div>
                 </div>
@@ -656,6 +939,7 @@ function createServer(port) {
         let tcoChart = null;
         let pieChart = null;
         let savingsChart = null;
+        let environmentalChart = null;
         let activeChart = null;
         let currentView = 'comparison';
         let chartData = null;
@@ -677,6 +961,12 @@ function createServer(port) {
                 success: '#96CEB4',
                 warning: '#FFEAA7',
                 info: '#74B9FF'
+            },
+            environmental: {
+                primary: '#2E7D32',
+                secondary: '#4CAF50',
+                light: '#81C784',
+                gradient: ['#2E7D32', '#4CAF50', '#66BB6A', '#81C784']
             }
         };
         
@@ -813,6 +1103,9 @@ function createServer(port) {
                     break;
                 case 'timeline':
                     activeChart = createSavingsChart(ctx, data);
+                    break;
+                case 'environmental':
+                    activeChart = createEnvironmentalChart(ctx, data);
                     break;
             }
         }
@@ -1069,6 +1362,98 @@ function createServer(port) {
         }
         
         /**
+         * Create environmental impact visualization chart
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {Object} data - TCO calculation results
+         * @return {Chart} Chart.js instance
+         */
+        function createEnvironmentalChart(ctx, data, mode = 'single') {
+            const { comparison } = data;
+            const { pueImprovement, annualEnergySavingsMWh, annualCarbonReductionTons } = comparison.efficiency;
+            
+            // Convert to contextual equivalents
+            const homesEquivalent = Math.round(annualEnergySavingsMWh * 1000 / 10656); // Average US home uses 10,656 kWh/year
+            const treesEquivalent = Math.round(annualCarbonReductionTons * 16); // 1 ton CO2 = ~16 tree seedlings for 10 years
+            const carsEquivalent = Math.round(annualCarbonReductionTons / 4.6); // Average car emits 4.6 tons CO2/year
+            
+            return new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: [
+                        \`Energy Savings: \${annualEnergySavingsMWh} MWh/year\`,
+                        \`CO₂ Reduction: \${annualCarbonReductionTons} tons/year\`,
+                        \`PUE Improvement: \${pueImprovement}%\`,
+                        'Baseline Impact'
+                    ],
+                    datasets: [{
+                        data: [
+                            annualEnergySavingsMWh,
+                            annualCarbonReductionTons * 10, // Scale for visibility
+                            pueImprovement * 50, // Scale for visibility
+                            100 // Baseline for comparison
+                        ],
+                        backgroundColor: colors.environmental.gradient,
+                        borderColor: '#fff',
+                        borderWidth: 3,
+                        cutout: '50%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: mode === 'grid' ? 1 : 1.5,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: '🌱 Environmental Impact Overview',
+                            color: '#2E7D32',
+                            font: { size: 18, weight: 'bold' }
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#333',
+                                font: { size: 11, weight: '600' },
+                                usePointStyle: true,
+                                padding: 15,
+                                generateLabels: function(chart) {
+                                    const original = Chart.defaults.plugins.legend.labels.generateLabels;
+                                    const labels = original.call(this, chart);
+                                    
+                                    // Add contextual information
+                                    labels[0].text = \`⚡ \${annualEnergySavingsMWh} MWh/year (≈\${homesEquivalent} homes)\`;
+                                    labels[1].text = \`🌍 \${annualCarbonReductionTons} tons CO₂/year (≈\${treesEquivalent} trees)\`;
+                                    labels[2].text = \`📊 \${pueImprovement}% PUE improvement\`;
+                                    labels[3].text = 'Baseline for comparison';
+                                    
+                                    return labels;
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(46, 125, 50, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label;
+                                    if (label.includes('Energy')) {
+                                        return [\`Energy Savings: \${annualEnergySavingsMWh} MWh/year\`, \`Equivalent to \${homesEquivalent} homes powered\`];
+                                    } else if (label.includes('CO₂')) {
+                                        return [\`CO₂ Reduction: \${annualCarbonReductionTons} tons/year\`, \`Equivalent to \${carsEquivalent} cars removed\`, \`Or \${treesEquivalent} tree seedlings planted\`];
+                                    } else if (label.includes('PUE')) {
+                                        return [\`PUE Improvement: \${pueImprovement}%\`, 'More efficient power usage'];
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        /**
          * Client-side input validation
          * @param {Object} data - Form input data
          * @throws {Error} If validation fails
@@ -1086,69 +1471,260 @@ function createServer(port) {
         }
         
         /**
-         * Display comprehensive calculation results
+         * Display comprehensive calculation results with enhanced environmental impact
          * @param {Object} data - TCO calculation results from API
          */
         function displayResults(data) {
-            const { airCooling, immersionCooling, comparison, parameters } = data;
-            
-            // Update savings highlight
-            const savingsHighlight = document.getElementById('savingsHighlight');
-            const totalSavings = comparison.savings.totalSavings;
-            const isPositive = totalSavings >= 0;
-            
-            savingsHighlight.innerHTML = \`
-                <h2>\${isPositive ? '💰 Total Savings' : '💸 Additional Cost'}</h2>
-                <div class="savings-value">\${isPositive ? '$' : '-$'}\${Math.abs(totalSavings).toLocaleString()}</div>
-                <p>Over \${parameters.analysisYears} year\${parameters.analysisYears > 1 ? 's' : ''} • ROI: \${comparison.savings.roiPercent}% • Payback: \${comparison.savings.paybackYears} years</p>
-            \`;
-            
-            if (!isPositive) {
-                savingsHighlight.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+            // Validate input data structure
+            if (!data || typeof data !== 'object') {
+                console.error('Invalid data provided to displayResults');
+                return;
             }
             
-            // Update results grid
+            const { airCooling, immersionCooling, comparison, parameters } = data;
+            
+            // Validate required data structures
+            if (!comparison || !comparison.savings || !comparison.efficiency) {
+                console.error('Missing required comparison data');
+                return;
+            }
+            
+            const { pueImprovement, annualEnergySavingsMWh, annualCarbonReductionTons } = comparison.efficiency;
+            
+            // Calculate contextual environmental equivalents with safety checks
+            const homesEquivalent = Math.round((annualEnergySavingsMWh || 0) * 1000 / 10656); // Average US home uses 10,656 kWh/year
+            const treesEquivalent = Math.round((annualCarbonReductionTons || 0) * 16); // 1 ton CO2 = ~16 tree seedlings for 10 years
+            const carsEquivalent = Math.round((annualCarbonReductionTons || 0) / 4.6); // Average car emits 4.6 tons CO2/year
+            
+            // Update savings highlight with error handling
+            const savingsHighlight = document.getElementById('savingsHighlight');
+            if (!savingsHighlight) {
+                console.error('savingsHighlight element not found');
+                return;
+            }
+            
+            // Safe extraction of totalSavings with fallback
+            const totalSavings = comparison?.savings?.totalSavings ?? 0;
+            const isPositive = totalSavings >= 0;
+            
+            try {
+                const savingsTitle = isPositive ? '💰 Total Savings' : '💸 Additional Cost';
+                const savingsPrefix = isPositive ? '$' : '-$';
+                const yearText = (parameters?.analysisYears || 0) > 1 ? 's' : '';
+                const analysisYears = parameters?.analysisYears || 0;
+                const roiPercent = comparison?.savings?.roiPercent || 0;
+                const paybackYears = comparison?.savings?.paybackYears || 0;
+                
+                savingsHighlight.innerHTML = 
+                    '<h2>' + savingsTitle + '</h2>' +
+                    '<div class="savings-value">' + savingsPrefix + Math.abs(totalSavings).toLocaleString() + '</div>' +
+                    '<p>Over ' + analysisYears + ' year' + yearText + ' • ROI: ' + roiPercent + '% • Payback: ' + paybackYears + ' years</p>';
+                
+                if (!isPositive) {
+                    savingsHighlight.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+                }
+            } catch (error) {
+                console.error('Error generating savings highlight:', error);
+                savingsHighlight.innerHTML = \`
+                    <h2>💰 TCO Analysis</h2>
+                    <div class="savings-value">Calculating...</div>
+                    <p>Analysis in progress</p>
+                \`;
+            }
+            
+            // Add environmental impact section before results grid
+            const environmentalSection = 
+                '<div class="environmental-impact">' +
+                    '<div class="environmental-title">🌱 Environmental Impact</div>' +
+                    '<div class="environmental-subtitle">Sustainability Benefits & ESG Metrics</div>' +
+                    '<div class="environmental-grid">' +
+                        '<div class="environmental-card">' +
+                            '<span class="environmental-icon">⚡</span>' +
+                            '<div class="environmental-label">PUE Improvement</div>' +
+                            '<div class="environmental-value">' + pueImprovement + '%</div>' +
+                            '<div class="environmental-context">' +
+                                'Power Usage Effectiveness<br>' +
+                                ((1 - comparison.efficiency.pueImprovement/100) * 100).toFixed(1) + '% more efficient cooling' +
+                            '</div>' +
+                            '<div class="gauge-container">' +
+                                '<canvas id="pueGauge" width="200" height="100"></canvas>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="environmental-card">' +
+                            '<span class="environmental-icon">🏠</span>' +
+                            '<div class="environmental-label">Energy Savings</div>' +
+                            '<div class="environmental-value">' + annualEnergySavingsMWh + '</div>' +
+                            '<div class="environmental-context">' +
+                                'MWh saved annually<br>' +
+                                'Powers ~' + homesEquivalent + ' homes for a year' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="environmental-card">' +
+                            '<span class="environmental-icon">🌍</span>' +
+                            '<div class="environmental-label">CO₂ Reduction</div>' +
+                            '<div class="environmental-value">' + annualCarbonReductionTons + '</div>' +
+                            '<div class="environmental-context">' +
+                                'Tons CO₂ reduced annually<br>' +
+                                'Equal to ' + carsEquivalent + ' cars removed from roads' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="environmental-card">' +
+                            '<span class="environmental-icon">🌳</span>' +
+                            '<div class="environmental-label">Carbon Offset</div>' +
+                            '<div class="environmental-value">' + treesEquivalent + '</div>' +
+                            '<div class="environmental-context">' +
+                                'Tree seedlings equivalent<br>' +
+                                '10-year carbon sequestration' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div style="text-align: center; margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">' +
+                        '<h4 style="margin-bottom: 10px; color: #E8F5E8;">🎯 ESG Compliance Impact</h4>' +
+                        '<p style="font-size: 1rem; line-height: 1.6; opacity: 0.95;">' +
+                            'This immersion cooling solution directly contributes to <strong>Scope 2 emissions reduction</strong>, ' +
+                            'supporting corporate sustainability goals and ESG reporting requirements. ' +
+                            'The ' + pueImprovement + '% PUE improvement represents measurable progress toward ' +
+                            '<strong>carbon neutrality objectives</strong> and regulatory compliance.' +
+                        '</p>' +
+                    '</div>' +
+                '</div>';
+            
+            // Insert environmental section before results grid
             const resultsGrid = document.getElementById('resultsGrid');
-            resultsGrid.innerHTML = \`
-                <div class="result-card air">
-                    <h3>🌪️ Air Cooling System</h3>
-                    <div class="result-subtitle">Equipment: \${airCooling.equipment.count} × 42U Racks</div>
-                    <div class="result-value">$\${airCooling.costs.totalTCO.toLocaleString()}</div>
-                    <div class="result-subtitle">Total Cost of Ownership</div>
-                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
-                        CAPEX: $\${airCooling.costs.capex.toLocaleString()}<br>
-                        Annual OPEX: $\${airCooling.costs.annualOpex.toLocaleString()}<br>
-                        Power: \${airCooling.equipment.totalPowerKW}kW • PUE: \${airCooling.equipment.pue}
-                    </div>
-                </div>
+            if (!resultsGrid) {
+                console.error('resultsGrid element not found');
+                return;
+            }
+            
+            try {
+                resultsGrid.insertAdjacentHTML('beforebegin', environmentalSection);
+            } catch (error) {
+                console.error('Error inserting environmental section:', error);
+            }
+            
+            // Update results grid with enhanced environmental integration
+            try {
+                const airEquipmentCount = (airCooling && airCooling.equipment && airCooling.equipment.count) || 0;
+                const airTotalTCO = (airCooling && airCooling.costs && airCooling.costs.totalTCO) || 0;
+                const airCapex = (airCooling && airCooling.costs && airCooling.costs.capex) || 0;
+                const airAnnualOpex = (airCooling && airCooling.costs && airCooling.costs.annualOpex) || 0;
+                const airTotalPowerKW = (airCooling && airCooling.equipment && airCooling.equipment.totalPowerKW) || 0;
+                const airPue = (airCooling && airCooling.equipment && airCooling.equipment.pue) || 0;
+                const airAnnualConsumptionMWh = (airCooling && airCooling.energy && airCooling.energy.annualConsumptionMWh) || 0;
                 
-                <div class="result-card immersion">
-                    <h3>🧊 Immersion Cooling</h3>
-                    <div class="result-subtitle">Equipment: \${immersionCooling.equipment.count} × Immersion Tanks</div>
-                    <div class="result-value">$\${immersionCooling.costs.totalTCO.toLocaleString()}</div>
-                    <div class="result-subtitle">Total Cost of Ownership</div>
-                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
-                        CAPEX: $\${immersionCooling.costs.capex.toLocaleString()}<br>
-                        Annual OPEX: $\${immersionCooling.costs.annualOpex.toLocaleString()}<br>
-                        Power: \${immersionCooling.equipment.totalPowerKW}kW • PUE: \${immersionCooling.equipment.pue}
-                    </div>
-                </div>
+                const immersionEquipmentCount = (immersionCooling && immersionCooling.equipment && immersionCooling.equipment.count) || 0;
+                const immersionTotalTCO = (immersionCooling && immersionCooling.costs && immersionCooling.costs.totalTCO) || 0;
+                const immersionCapex = (immersionCooling && immersionCooling.costs && immersionCooling.costs.capex) || 0;
+                const immersionAnnualOpex = (immersionCooling && immersionCooling.costs && immersionCooling.costs.annualOpex) || 0;
+                const immersionTotalPowerKW = (immersionCooling && immersionCooling.equipment && immersionCooling.equipment.totalPowerKW) || 0;
+                const immersionPue = (immersionCooling && immersionCooling.equipment && immersionCooling.equipment.pue) || 0;
+                const immersionAnnualConsumptionMWh = (immersionCooling && immersionCooling.energy && immersionCooling.energy.annualConsumptionMWh) || 0;
+                const comparisonAnnualSavings = (comparison && comparison.savings && comparison.savings.annualSavings) || 0;
                 
-                <div class="result-card savings">
-                    <h3>⚡ Efficiency Benefits</h3>
-                    <div class="result-subtitle">PUE Improvement</div>
-                    <div class="result-value">\${comparison.efficiency.pueImprovement}%</div>
-                    <div class="result-subtitle">Power Usage Effectiveness</div>
-                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
-                        Energy Savings: \${comparison.efficiency.annualEnergySavingsMWh} MWh/year<br>
-                        CO₂ Reduction: \${comparison.efficiency.annualCarbonReductionTons} tons/year<br>
-                        Annual Savings: $\${comparison.savings.annualSavings.toLocaleString()}
-                    </div>
-                </div>
-            \`;
+                resultsGrid.innerHTML = 
+                '<div class="result-card air">' +
+                    '<h3>🌪️ Air Cooling System</h3>' +
+                    '<div class="result-subtitle">Equipment: ' + airEquipmentCount + ' × 42U Racks</div>' +
+                    '<div class="result-value">$' + airTotalTCO.toLocaleString() + '</div>' +
+                    '<div class="result-subtitle">Total Cost of Ownership</div>' +
+                    '<div style="margin-top: 10px; font-size: 0.85rem; color: #666;">' +
+                        'CAPEX: $' + airCapex.toLocaleString() + '<br>' +
+                        'Annual OPEX: $' + airAnnualOpex.toLocaleString() + '<br>' +
+                        'Power: ' + airTotalPowerKW + 'kW • PUE: ' + airPue + '<br>' +
+                        '<span style="color: #e74c3c;">CO₂: ' + Math.round(airAnnualConsumptionMWh * 0.4) + ' tons/year</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="result-card immersion">' +
+                    '<h3>🧊 Immersion Cooling</h3>' +
+                    '<div class="result-subtitle">Equipment: ' + immersionEquipmentCount + ' × Immersion Tanks</div>' +
+                    '<div class="result-value">$' + immersionTotalTCO.toLocaleString() + '</div>' +
+                    '<div class="result-subtitle">Total Cost of Ownership</div>' +
+                    '<div style="margin-top: 10px; font-size: 0.85rem; color: #666;">' +
+                        'CAPEX: $' + immersionCapex.toLocaleString() + '<br>' +
+                        'Annual OPEX: $' + immersionAnnualOpex.toLocaleString() + '<br>' +
+                        'Power: ' + immersionTotalPowerKW + 'kW • PUE: ' + immersionPue + '<br>' +
+                        '<span style="color: #4CAF50;">CO₂: ' + Math.round(immersionAnnualConsumptionMWh * 0.4) + ' tons/year</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="result-card savings" style="border-left-color: #2E7D32;">' +
+                    '<h3>🌱 Sustainability Impact</h3>' +
+                    '<div class="result-subtitle">Environmental Benefits</div>' +
+                    '<div class="result-value">ESG+</div>' +
+                    '<div class="result-subtitle">Corporate Responsibility</div>' +
+                    '<div style="margin-top: 10px; font-size: 0.85rem; color: #666;">' +
+                        '<span style="color: #2E7D32; font-weight: 600;">✓ ' + (pueImprovement || 0) + '% PUE improvement</span><br>' +
+                        '<span style="color: #2E7D32; font-weight: 600;">✓ ' + (annualEnergySavingsMWh || 0) + ' MWh/year saved</span><br>' +
+                        '<span style="color: #2E7D32; font-weight: 600;">✓ ' + (annualCarbonReductionTons || 0) + ' tons CO₂/year reduced</span><br>' +
+                        'Annual Cost Savings: $' + comparisonAnnualSavings.toLocaleString() +
+                    '</div>' +
+                '</div>';
+            } catch (error) {
+                console.error('Error generating results grid:', error);
+                resultsGrid.innerHTML = 
+                    '<div class="result-card">' +
+                        '<h3>⚠️ Results Loading</h3>' +
+                        '<div class="result-subtitle">Calculation in progress...</div>' +
+                        '<div class="result-value">Please wait</div>' +
+                    '</div>';
+            }
+            
+            // Create PUE gauge chart after DOM insertion
+            try {
+                setTimeout(() => {
+                    createPUEGauge(pueImprovement || 0);
+                }, 100);
+            } catch (error) {
+                console.error('Error creating PUE gauge:', error);
+            }
             
             // Initialize charts with default view
-            updateSingleChart(data, currentView);
+            try {
+                updateSingleChart(data, currentView);
+            } catch (error) {
+                console.error('Error updating charts:', error);
+            }
+        }
+        
+        /**
+         * Create PUE improvement gauge visualization
+         * @param {number} pueImprovement - PUE improvement percentage
+         */
+        function createPUEGauge(pueImprovement) {
+            const canvas = document.getElementById('pueGauge');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const centerX = 100;
+            const centerY = 80;
+            const radius = 60;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, 200, 100);
+            
+            // Background arc
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+            ctx.lineWidth = 12;
+            ctx.strokeStyle = '#E0E0E0';
+            ctx.stroke();
+            
+            // Progress arc
+            const progressAngle = (pueImprovement / 50) * Math.PI; // Scale to 50% max for visual appeal
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, Math.PI + progressAngle);
+            ctx.lineWidth = 12;
+            ctx.strokeStyle = pueImprovement > 30 ? '#4CAF50' : pueImprovement > 15 ? '#FF9800' : '#2196F3';
+            ctx.stroke();
+            
+            // Center text
+            ctx.fillStyle = '#2E7D32';
+            ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(pueImprovement + '%', centerX, centerY - 5);
+            
+            ctx.fillStyle = '#666';
+            ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.fillText('Efficiency', centerX, centerY + 15);
         }
     </script>
 </body>
