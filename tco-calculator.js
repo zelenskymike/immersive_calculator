@@ -36,15 +36,22 @@ const net = require('net');    // TCP сеть для проверки дост�
 function checkPort(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
-    server.listen(port, (err) => {
-      if (err) {
-        resolve(false);  // Порт занят или недоступен
+    
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(false);  // Порт занят
       } else {
-        server.close(() => {
-          resolve(true);   // Порт свободен
-        });
+        resolve(false);  // Другая ошибка
       }
     });
+    
+    server.once('listening', () => {
+      server.close(() => {
+        resolve(true);   // Порт свободен
+      });
+    });
+    
+    server.listen(port);
   });
 }
 
