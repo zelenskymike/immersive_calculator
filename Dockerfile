@@ -11,8 +11,9 @@ WORKDIR /app
 RUN addgroup -g 1001 -S tcocalc && \
     adduser -S tcocalc -u 1001 -G tcocalc
 
-# Copy the standalone calculator (no external dependencies needed)
+# Copy the calculator and CSS files
 COPY tco-calculator.js ./
+COPY styles/ ./styles/
 
 # Set ownership
 RUN chown -R tcocalc:tcocalc /app

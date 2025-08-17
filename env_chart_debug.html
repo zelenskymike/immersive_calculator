@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environmental Chart Debug</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .test-container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
+        canvas { border: 1px solid #ddd; margin: 20px 0; }
+        .result { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🌱 Environmental Chart Debug Tool</h1>
+        <div id="messages"></div>
+        
+        <div style="display: flex; gap: 10px; margin: 20px 0;">
+            <button onclick="testBasicChart()">Test Basic Chart</button>
+            <button onclick="testEnvironmentalChart()">Test Environmental Chart</button>
+            <button onclick="testWithRealData()">Test with Real Data</button>
+            <button onclick="clearTests()">Clear Tests</button>
+        </div>
+        
+        <div id="chart-container">
+            <canvas id="debugChart" width="600" height="400"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let currentChart = null;
+        const messages = document.getElementById('messages');
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            messages.appendChild(div);
+            console.log(message);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function clearChart() {
+            if (currentChart) {
+                currentChart.destroy();
+                currentChart = null;
+            }
+        }
+        
+        function clearTests() {
+            clearChart();
+            messages.innerHTML = '';
+            log('🧹 Tests cleared', 'info');
+        }
+        
+        function testBasicChart() {
+            log('🧪 Testing basic Chart.js functionality...', 'info');
+            
+            try {
+                clearChart();
+                const ctx = document.getElementById('debugChart').getContext('2d');
+                
+                currentChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Test 1', 'Test 2', 'Test 3'],
+                        datasets: [{
+                            data: [30, 40, 30],
+                            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '🧪 Basic Chart Test'
+                            }
+                        }
+                    }
+                });
+                
+                log('✅ Basic chart created successfully', 'success');
+            } catch (error) {
+                log('❌ Basic chart failed: ' + error.message, 'error');
+            }
+        }
+        
+        function testEnvironmentalChart() {
+            log('🌱 Testing environmental chart creation...', 'info');
+            
+            try {
+                clearChart();
+                const ctx = document.getElementById('debugChart').getContext('2d');
+                
+                // Mock environmental data
+                const pueImprovement = 38.9;
+                const annualEnergySavingsMWh = 1159;
+                const annualCarbonReductionTons = 464;
+                const homesEquivalent = Math.round(annualEnergySavingsMWh * 1000 / 10656);
+                const treesEquivalent = Math.round(annualCarbonReductionTons * 16);
+                
+                const colors = {
+                    environmental: {
+                        gradient: ['#2E7D32', '#4CAF50', '#66BB6A', '#81C784']
+                    }
+                };
+                
+                const chartData = [
+                    annualEnergySavingsMWh,
+                    annualCarbonReductionTons * 10,
+                    pueImprovement * 50,
+                    100
+                ];
+                
+                log('📊 Chart data: ' + JSON.stringify(chartData), 'info');
+                
+                currentChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [
+                            'Energy Savings: ' + annualEnergySavingsMWh + ' MWh/year',
+                            'CO₂ Reduction: ' + annualCarbonReductionTons + ' tons/year',
+                            'PUE Improvement: ' + pueImprovement + '%',
+                            'Baseline Impact'
+                        ],
+                        datasets: [{
+                            data: chartData,
+                            backgroundColor: colors.environmental.gradient,
+                            borderColor: '#fff',
+                            borderWidth: 3,
+                            cutout: '50%'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '🌱 Environmental Impact Overview',
+                                color: '#2E7D32',
+                                font: { size: 18, weight: 'bold' }
+                            },
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color: '#333',
+                                    generateLabels: function(chart) {
+                                        return [
+                                            {
+                                                text: '⚡ ' + annualEnergySavingsMWh + ' MWh/year (≈' + homesEquivalent + ' homes)',
+                                                fillStyle: colors.environmental.gradient[0]
+                                            },
+                                            {
+                                                text: '🌍 ' + annualCarbonReductionTons + ' tons CO₂/year (≈' + treesEquivalent + ' trees)',
+                                                fillStyle: colors.environmental.gradient[1]
+                                            },
+                                            {
+                                                text: '📊 ' + pueImprovement + '% PUE improvement',
+                                                fillStyle: colors.environmental.gradient[2]
+                                            },
+                                            {
+                                                text: 'Baseline for comparison',
+                                                fillStyle: colors.environmental.gradient[3]
+                                            }
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                log('✅ Environmental chart created successfully!', 'success');
+                log('📈 Energy savings: ' + annualEnergySavingsMWh + ' MWh/year', 'info');
+                log('🌍 CO₂ reduction: ' + annualCarbonReductionTons + ' tons/year', 'info');
+                log('📊 PUE improvement: ' + pueImprovement + '%', 'info');
+                
+            } catch (error) {
+                log('❌ Environmental chart failed: ' + error.message, 'error');
+                log('❌ Error stack: ' + error.stack, 'error');
+            }
+        }
+        
+        async function testWithRealData() {
+            log('🌐 Testing with real API data...', 'info');
+            
+            try {
+                const response = await fetch('/api/calculate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        airRacks: 10,
+                        airPowerPerRack: 20,
+                        airRackCost: 50000,
+                        airPUE: 1.8,
+                        immersionTanks: 9,
+                        immersionPowerPerTank: 23,
+                        immersionTankCost: 80000,
+                        immersionPUE: 1.1,
+                        analysisYears: 5,
+                        electricityPrice: 0.12,
+                        discountRate: 5,
+                        maintenanceCost: 3
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('API request failed: ' + response.status);
+                }
+                
+                const data = await response.json();
+                log('✅ API data received successfully', 'success');
+                
+                // Test with real data
+                clearChart();
+                const ctx = document.getElementById('debugChart').getContext('2d');
+                
+                const { comparison } = data;
+                const { pueImprovement, annualEnergySavingsMWh, annualCarbonReductionTons } = comparison.efficiency;
+                
+                const colors = {
+                    environmental: {
+                        gradient: ['#2E7D32', '#4CAF50', '#66BB6A', '#81C784']
+                    }
+                };
+                
+                currentChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [
+                            'Energy Savings: ' + annualEnergySavingsMWh + ' MWh/year',
+                            'CO₂ Reduction: ' + annualCarbonReductionTons + ' tons/year',
+                            'PUE Improvement: ' + pueImprovement + '%',
+                            'Baseline Impact'
+                        ],
+                        datasets: [{
+                            data: [
+                                annualEnergySavingsMWh,
+                                annualCarbonReductionTons * 10,
+                                pueImprovement * 50,
+                                100
+                            ],
+                            backgroundColor: colors.environmental.gradient,
+                            borderColor: '#fff',
+                            borderWidth: 3,
+                            cutout: '50%'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '🌱 Environmental Impact (Real Data)',
+                                color: '#2E7D32'
+                            }
+                        }
+                    }
+                });
+                
+                log('✅ Chart with real data created successfully!', 'success');
+                
+            } catch (error) {
+                log('❌ Real data test failed: ' + error.message, 'error');
+            }
+        }
+        
+        // Auto-run basic test on page load
+        window.addEventListener('load', () => {
+            log('🚀 Debug tool loaded - Chart.js version: ' + Chart.version, 'info');
+            setTimeout(testBasicChart, 500);
+        });
+    </script>
+</body>
+</html>

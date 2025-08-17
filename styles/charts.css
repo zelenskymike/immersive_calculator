@@ -1,0 +1,235 @@
+/**
+ * CHARTS STYLES - Стили для графиков
+ * Стили для Chart.js графиков и переключателей
+ */
+
+.charts-section {
+    background: rgba(255, 255, 255, 0.95);
+    color: #333;
+    padding: 40px;
+    border-radius: 20px;
+    margin-bottom: 30px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.charts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.charts-title {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.chart-switcher {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.chart-btn {
+    padding: 10px 20px;
+    background: #f7fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 25px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #4a5568;
+}
+
+.chart-btn:hover {
+    background: #edf2f7;
+    border-color: #cbd5e0;
+    transform: translateY(-1px);
+}
+
+.chart-btn.active {
+    background: #667eea;
+    border-color: #667eea;
+    color: white;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.charts-container {
+    position: relative;
+    min-height: 400px;
+}
+
+.chart-wrapper {
+    display: none;
+    margin-bottom: 30px;
+}
+
+.chart-wrapper.active {
+    display: block;
+}
+
+.chart-wrapper h3 {
+    font-size: 1.3rem;
+    margin-bottom: 20px;
+    color: #2d3748;
+    text-align: center;
+    font-weight: 600;
+}
+
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 30px;
+    margin-top: 20px;
+}
+
+.chart-item {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.chart-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+}
+
+.chart-item h4 {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    color: #2d3748;
+    text-align: center;
+    font-weight: 600;
+}
+
+.chart-canvas {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+/* Responsive chart adjustments */
+.single-chart .chart-canvas {
+    height: 400px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.grid-charts .chart-canvas {
+    height: 250px;
+}
+
+.all-charts .chart-canvas {
+    height: 300px;
+}
+
+/* Fix environmental chart stretching in grid view */
+.chart-grid #environmentalChart {
+    max-height: 300px !important;
+    height: 300px !important;
+}
+
+.chart-grid .chart-item canvas {
+    max-height: 300px !important;
+}
+
+/* Chart loading state */
+.chart-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    color: #718096;
+    font-style: italic;
+}
+
+.chart-loading::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    border: 2px solid #e2e8f0;
+    border-top: 2px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 10px;
+}
+
+/* Chart legends custom styling */
+.chart-legend {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 15px;
+    font-size: 0.9rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+/* Chart tooltips enhancement */
+.chartjs-tooltip {
+    background: rgba(0, 0, 0, 0.8) !important;
+    border-radius: 8px !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+.chartjs-tooltip-title {
+    font-weight: 600 !important;
+    margin-bottom: 5px !important;
+}
+
+.chartjs-tooltip-body {
+    font-size: 13px !important;
+}
+
+/* Animation for chart appearance */
+@keyframes chartFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chart-wrapper.active {
+    animation: chartFadeIn 0.5s ease-out;
+}
+
+/* Print styles for charts */
+@media print {
+    .chart-switcher {
+        display: none;
+    }
+    
+    .chart-wrapper {
+        display: block !important;
+        page-break-inside: avoid;
+        margin-bottom: 50px;
+    }
+    
+    .chart-canvas {
+        height: auto !important;
+    }
+}

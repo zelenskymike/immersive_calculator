@@ -382,6 +382,36 @@ function createServer(port) {
       return;
     }
 
+    // Static CSS files serving
+    if (req.method === 'GET' && req.url.startsWith('/styles/')) {
+      const fs = require('fs');
+      const path = require('path');
+      
+      try {
+        // Remove leading slash and join with current directory
+        const relativePath = req.url.substring(1); // Remove leading /
+        const filePath = path.join(process.cwd(), relativePath);
+        
+        console.log('Requesting CSS file:', req.url);
+        console.log('Resolved path:', filePath);
+        
+        const cssContent = fs.readFileSync(filePath, 'utf8');
+        
+        res.writeHead(200, { 
+          'Content-Type': 'text/css',
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*'
+        });
+        res.end(cssContent);
+        return;
+      } catch (error) {
+        console.error('CSS file error:', error.message);
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('CSS file not found: ' + req.url);
+        return;
+      }
+    }
+
     // Health check endpoint for container monitoring
     if (req.method === 'GET' && req.url === '/health') {
       try {
@@ -546,6 +576,27 @@ function createServer(port) {
       return;
     }
 
+    // Serve debug files for testing
+    if (req.method === 'GET' && (req.url === '/test_environmental_chart.html' || req.url === '/env_chart_debug.html' || req.url === '/debug_chart_init.html')) {
+      const fs = require('fs');
+      const path = require('path');
+      
+      try {
+        const fileName = req.url.substring(1); // Remove leading /
+        const filePath = path.join(process.cwd(), fileName);
+        const htmlContent = fs.readFileSync(filePath, 'utf8');
+        
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(htmlContent);
+        return;
+      } catch (error) {
+        console.error('Test file error:', error.message);
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Test file not found');
+        return;
+      }
+    }
+
     // Serve the main web interface
     if (req.method === 'GET' && req.url === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -556,8 +607,13 @@ function createServer(port) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🧊 TCO Calculator - Immersion Cooling Analysis</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- External CSS Styles -->
+    <link rel="stylesheet" href="/styles/main.css">
+    
+    <!-- Fallback inline styles for development -->
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        /* Minimal fallback styles if external CSS fails to load */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -983,6 +1039,10 @@ function createServer(port) {
                             <h5 style="text-align: center; color: #333; margin-bottom: 10px; font-size: 1rem;">Savings Timeline</h5>
                             <canvas id="savingsChart" width="350" height="250"></canvas>
                         </div>
+                        <div class="chart-container" style="padding: 15px;">
+                            <h5 style="text-align: center; color: #333; margin-bottom: 10px; font-size: 1rem;">🌱 Environmental Impact</h5>
+                            <canvas id="environmentalChart" width="350" height="250"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1077,11 +1137,19 @@ function createServer(port) {
                 
                 const result = await response.json();
                 chartData = result;
-                displayResults(result);
                 
+                // First fill the results without charts
+                displayResultsContent(result);
+                
+                // Then show the content container and create charts
                 setTimeout(() => {
                     loading.style.display = 'none';
                     content.style.display = 'block';
+                    
+                    // Now that container is visible, initialize charts
+                    setTimeout(() => {
+                        initializeCharts(result);
+                    }, 100);
                 }, 800);
                 
             } catch (err) {
@@ -1093,26 +1161,39 @@ function createServer(port) {
         
         /**
          * Switch between different chart views
-         * @param {string} view - View type: 'comparison', 'breakdown', 'timeline', 'grid'
+         * @param {string} view - View type: 'comparison', 'breakdown', 'timeline', 'environmental', 'grid'
          */
         function switchView(view) {
+            console.log('🔄 Switching to view:', view, 'Previous view:', currentView);
             currentView = view;
             
             // Update button states
             document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(\`btn-\${view}\`).classList.add('active');
+            const targetButton = document.getElementById(\`btn-\${view}\`);
+            if (targetButton) {
+                targetButton.classList.add('active');
+                console.log('✅ Button state updated for view:', view);
+            } else {
+                console.error('❌ Button not found for view:', view);
+            }
             
             // Get containers
             const singleView = document.getElementById('singleChartView');
             const gridView = document.getElementById('gridChartView');
             
             if (view === 'grid') {
+                console.log('🔲 Switching to grid view...');
                 // Hide single view first
                 singleView.style.display = 'none';
                 
                 // Show grid view and wait for layout
                 gridView.style.display = 'block';
                 gridView.style.opacity = '0';
+                
+                console.log('📊 Grid view containers visible:', {
+                    gridVisible: gridView.style.display !== 'none',
+                    singleVisible: singleView.style.display !== 'none'
+                });
                 
                 // Update charts after container is visible
                 if (chartData) {
@@ -1125,6 +1206,7 @@ function createServer(port) {
                     }, 100);
                 }
             } else {
+                console.log('📊 Switching to single chart view:', view);
                 // Hide grid view
                 gridView.style.display = 'none';
                 gridView.style.opacity = '1';
@@ -1133,7 +1215,17 @@ function createServer(port) {
                 // Show single view
                 singleView.style.display = 'block';
                 
-                if (chartData) updateSingleChart(chartData, view);
+                console.log('📊 Single view containers visible:', {
+                    gridVisible: gridView.style.display !== 'none',
+                    singleVisible: singleView.style.display !== 'none'
+                });
+                
+                if (chartData) {
+                    console.log('📈 Updating single chart with view:', view);
+                    updateSingleChart(chartData, view);
+                } else {
+                    console.warn('⚠️ No chart data available for view update');
+                }
             }
         }
         
@@ -1143,25 +1235,78 @@ function createServer(port) {
          * @param {string} view - Chart type to display
          */
         function updateSingleChart(data, view) {
-            if (activeChart) {
-                activeChart.destroy();
-            }
+            console.log('🔄 Updating single chart view:', view);
             
-            const ctx = document.getElementById('activeChart').getContext('2d');
-            
-            switch (view) {
-                case 'comparison':
-                    activeChart = createTCOChart(ctx, data);
-                    break;
-                case 'breakdown':
-                    activeChart = createPieChart(ctx, data);
-                    break;
-                case 'timeline':
-                    activeChart = createSavingsChart(ctx, data);
-                    break;
-                case 'environmental':
-                    activeChart = createEnvironmentalChart(ctx, data);
-                    break;
+            try {
+                if (activeChart) {
+                    console.log('🗑️ Destroying previous chart');
+                    activeChart.destroy();
+                    activeChart = null;
+                }
+                
+                const canvas = document.getElementById('activeChart');
+                if (!canvas) {
+                    console.error('❌ Active chart canvas not found');
+                    return;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    console.error('❌ Failed to get canvas context');
+                    return;
+                }
+                
+                // Check if Chart.js is loaded
+                if (typeof Chart === 'undefined') {
+                    console.error('❌ Chart.js library not loaded');
+                    return;
+                }
+                
+                console.log('📊 Canvas context acquired, creating chart type:', view);
+                
+                switch (view) {
+                    case 'comparison':
+                        activeChart = createTCOChart(ctx, data);
+                        break;
+                    case 'breakdown':
+                        activeChart = createPieChart(ctx, data);
+                        break;
+                    case 'timeline':
+                        activeChart = createSavingsChart(ctx, data);
+                        break;
+                    case 'environmental':
+                        console.log('🌱 Creating environmental chart in single view...');
+                        activeChart = createEnvironmentalChart(ctx, data, 'single');
+                        
+                        // Fallback for environmental chart if creation failed
+                        if (!activeChart) {
+                            console.log('⚠️ Environmental chart creation failed, creating fallback...');
+                            activeChart = createFallbackEnvironmentalChart(ctx, data);
+                        }
+                        break;
+                    default:
+                        console.warn('⚠️ Unknown chart view:', view);
+                        return;
+                }
+                
+                if (activeChart) {
+                    console.log('✅ Chart created successfully for view:', view);
+                    
+                    // Force chart resize and update after creation
+                    setTimeout(() => {
+                        if (activeChart && typeof activeChart.resize === 'function') {
+                            activeChart.resize();
+                            activeChart.update();
+                            console.log('🔄 Chart resized and updated');
+                        }
+                    }, 100);
+                } else {
+                    console.error('❌ Failed to create chart for view:', view);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error in updateSingleChart:', error);
+                console.error('Stack trace:', error.stack);
             }
         }
         
@@ -1170,28 +1315,112 @@ function createServer(port) {
          * @param {Object} data - TCO calculation results
          */
         function updateGridCharts(data) {
-            // Destroy existing charts
-            if (tcoChart) tcoChart.destroy();
-            if (pieChart) pieChart.destroy();
-            if (savingsChart) savingsChart.destroy();
+            console.log('📊 Updating grid charts...');
             
-            // Wait for DOM to be fully visible before creating charts
-            setTimeout(() => {
-                const tcoCtx = document.getElementById('tcoChart').getContext('2d');
-                const pieCtx = document.getElementById('pieChart').getContext('2d');
-                const savingsCtx = document.getElementById('savingsChart').getContext('2d');
+            try {
+                // Destroy existing charts
+                if (tcoChart) {
+                    console.log('🗑️ Destroying TCO chart');
+                    tcoChart.destroy();
+                    tcoChart = null;
+                }
+                if (pieChart) {
+                    console.log('🗑️ Destroying pie chart');
+                    pieChart.destroy();
+                    pieChart = null;
+                }
+                if (savingsChart) {
+                    console.log('🗑️ Destroying savings chart');
+                    savingsChart.destroy();
+                    savingsChart = null;
+                }
+                if (environmentalChart) {
+                    console.log('🗑️ Destroying environmental chart');
+                    environmentalChart.destroy();
+                    environmentalChart = null;
+                }
                 
-                tcoChart = createTCOChart(tcoCtx, data, 'grid');
-                pieChart = createPieChart(pieCtx, data, 'grid');
-                savingsChart = createSavingsChart(savingsCtx, data, 'grid');
+                // Wait for DOM to be fully visible before creating charts (increased timeout)
+                setTimeout(() => {
+                    try {
+                        console.log('🔍 Getting grid chart contexts...');
+                        
+                        const tcoCanvas = document.getElementById('tcoChart');
+                        const pieCanvas = document.getElementById('pieChart');
+                        const savingsCanvas = document.getElementById('savingsChart');
+                        const environmentalCanvas = document.getElementById('environmentalChart');
+                        
+                        console.log('📋 Canvas elements found:', {
+                            tco: !!tcoCanvas,
+                            pie: !!pieCanvas,
+                            savings: !!savingsCanvas,
+                            environmental: !!environmentalCanvas
+                        });
+                        
+                        if (!tcoCanvas || !pieCanvas || !savingsCanvas || !environmentalCanvas) {
+                            console.error('❌ One or more grid canvas elements not found');
+                            return;
+                        }
+                        
+                        const tcoCtx = tcoCanvas.getContext('2d');
+                        const pieCtx = pieCanvas.getContext('2d');
+                        const savingsCtx = savingsCanvas.getContext('2d');
+                        const environmentalCtx = environmentalCanvas.getContext('2d');
+                        
+                        console.log('📋 Canvas contexts acquired:', {
+                            tco: !!tcoCtx,
+                            pie: !!pieCtx,
+                            savings: !!savingsCtx,
+                            environmental: !!environmentalCtx
+                        });
+                        
+                        if (!tcoCtx || !pieCtx || !savingsCtx || !environmentalCtx) {
+                            console.error('❌ Failed to get one or more canvas contexts');
+                            return;
+                        }
+                        
+                        console.log('🚀 Creating grid charts...');
+                        
+                        tcoChart = createTCOChart(tcoCtx, data, 'grid');
+                        pieChart = createPieChart(pieCtx, data, 'grid');
+                        savingsChart = createSavingsChart(savingsCtx, data, 'grid');
+                        
+                        console.log('🌱 Creating environmental chart in grid view...');
+                        environmentalChart = createEnvironmentalChart(environmentalCtx, data, 'grid');
+                        
+                        // Fallback for environmental chart if creation failed
+                        if (!environmentalChart) {
+                            console.log('⚠️ Environmental chart creation failed, creating fallback...');
+                            environmentalChart = createFallbackEnvironmentalChart(environmentalCtx, data);
+                        }
+                        
+                        console.log('📊 Grid charts creation results:', {
+                            tco: !!tcoChart,
+                            pie: !!pieChart,
+                            savings: !!savingsChart,
+                            environmental: !!environmentalChart
+                        });
+                        
+                        // Force resize after creation to fix stretching
+                        requestAnimationFrame(() => {
+                            console.log('🔧 Resizing grid charts...');
+                            if (tcoChart) tcoChart.resize();
+                            if (pieChart) pieChart.resize();
+                            if (savingsChart) savingsChart.resize();
+                            if (environmentalChart) environmentalChart.resize();
+                            console.log('✅ Grid charts resized');
+                        });
+                        
+                    } catch (error) {
+                        console.error('❌ Error creating grid charts:', error);
+                        console.error('Stack trace:', error.stack);
+                    }
+                }, 200);  // Increased from 50ms to 200ms
                 
-                // Force resize after creation to fix stretching
-                requestAnimationFrame(() => {
-                    if (tcoChart) tcoChart.resize();
-                    if (pieChart) pieChart.resize();
-                    if (savingsChart) savingsChart.resize();
-                });
-            }, 50);
+            } catch (error) {
+                console.error('❌ Error in updateGridCharts:', error);
+                console.error('Stack trace:', error.stack);
+            }
         }
         
         /**
@@ -1423,89 +1652,298 @@ function createServer(port) {
          * @return {Chart} Chart.js instance
          */
         function createEnvironmentalChart(ctx, data, mode = 'single') {
-            const { comparison } = data;
-            const { pueImprovement, annualEnergySavingsMWh, annualCarbonReductionTons } = comparison.efficiency;
+            console.log('🌱 Creating Environmental Impact chart...', { mode, data: !!data });
             
-            // Convert to contextual equivalents
-            const homesEquivalent = Math.round(annualEnergySavingsMWh * 1000 / 10656); // Average US home uses 10,656 kWh/year
-            const treesEquivalent = Math.round(annualCarbonReductionTons * 16); // 1 ton CO2 = ~16 tree seedlings for 10 years
-            const carsEquivalent = Math.round(annualCarbonReductionTons / 4.6); // Average car emits 4.6 tons CO2/year
-            
-            return new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: [
-                        \`Energy Savings: \${annualEnergySavingsMWh} MWh/year\`,
-                        \`CO₂ Reduction: \${annualCarbonReductionTons} tons/year\`,
-                        \`PUE Improvement: \${pueImprovement}%\`,
-                        'Baseline Impact'
-                    ],
-                    datasets: [{
-                        data: [
-                            annualEnergySavingsMWh,
-                            annualCarbonReductionTons * 10, // Scale for visibility
-                            pueImprovement * 50, // Scale for visibility
-                            100 // Baseline for comparison
+            try {
+                // Validate context
+                if (!ctx) {
+                    console.error('❌ Canvas context is null or undefined');
+                    return null;
+                }
+                
+                // Validate data structure with detailed logging
+                if (!data || !data.comparison || !data.comparison.efficiency) {
+                    console.error('❌ Invalid data structure for environmental chart:', {
+                        hasData: !!data,
+                        hasComparison: !!(data && data.comparison),
+                        hasEfficiency: !!(data && data.comparison && data.comparison.efficiency)
+                    });
+                    return null;
+                }
+                
+                const { comparison } = data;
+                const { pueImprovement, annualEnergySavingsMWh, annualCarbonReductionTons } = comparison.efficiency;
+                
+                console.log('📊 Environmental data:', {
+                    pueImprovement,
+                    annualEnergySavingsMWh,
+                    annualCarbonReductionTons
+                });
+                
+                // Validate numeric values
+                if (isNaN(pueImprovement) || isNaN(annualEnergySavingsMWh) || isNaN(annualCarbonReductionTons)) {
+                    console.error('❌ Invalid numeric values in environmental data');
+                    return null;
+                }
+                
+                // Convert to contextual equivalents with safety checks
+                const homesEquivalent = Math.round((annualEnergySavingsMWh || 0) * 1000 / 10656); // Average US home uses 10,656 kWh/year
+                const treesEquivalent = Math.round((annualCarbonReductionTons || 0) * 16); // 1 ton CO2 = ~16 tree seedlings for 10 years
+                const carsEquivalent = Math.round((annualCarbonReductionTons || 0) / 4.6); // Average car emits 4.6 tons CO2/year
+                
+                console.log('🔍 Context equivalents:', { homesEquivalent, treesEquivalent, carsEquivalent });
+                
+                // Check if Chart.js is available
+                if (typeof Chart === 'undefined') {
+                    console.error('❌ Chart.js is not loaded');
+                    return null;
+                }
+                
+                // Create chart data array with validation
+                const chartData = [
+                    Math.max(0, annualEnergySavingsMWh || 0),
+                    Math.max(0, (annualCarbonReductionTons || 0) * 10), // Scale for visibility
+                    Math.max(0, (pueImprovement || 0) * 50), // Scale for visibility
+                    100 // Baseline for comparison
+                ];
+                
+                console.log('📈 Chart data array:', chartData);
+                
+                // Verify all data is valid before creating chart
+                if (chartData.some(val => isNaN(val) || val < 0)) {
+                    console.error('❌ Invalid chart data detected:', chartData);
+                    return null;
+                }
+                
+                console.log('🔧 Creating Chart.js instance...');
+                // Clear canvas before creating new chart
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                
+                const chart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [
+                            'Energy Savings: ' + (annualEnergySavingsMWh || 0) + ' MWh/year',
+                            'CO₂ Reduction: ' + (annualCarbonReductionTons || 0) + ' tons/year',
+                            'PUE Improvement: ' + (pueImprovement || 0) + '%',
+                            'Baseline Impact'
                         ],
-                        backgroundColor: colors.environmental.gradient,
-                        borderColor: '#fff',
-                        borderWidth: 3,
-                        cutout: '50%'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    aspectRatio: mode === 'grid' ? 1 : 1.5,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: '🌱 Environmental Impact Overview',
-                            color: '#2E7D32',
-                            font: { size: 18, weight: 'bold' }
+                        datasets: [{
+                            data: chartData,
+                            backgroundColor: colors.environmental.gradient,
+                            borderColor: '#fff',
+                            borderWidth: 3,
+                            cutout: '50%'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,  // Changed to true for consistency with other charts
+                        aspectRatio: mode === 'grid' ? 1.4 : 1.5,
+                        animation: {
+                            duration: 1000  // Add animation to make chart more visible
                         },
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                color: '#333',
-                                font: { size: 11, weight: '600' },
-                                usePointStyle: true,
-                                padding: 15,
-                                generateLabels: function(chart) {
-                                    const original = Chart.defaults.plugins.legend.labels.generateLabels;
-                                    const labels = original.call(this, chart);
-                                    
-                                    // Add contextual information
-                                    labels[0].text = \`⚡ \${annualEnergySavingsMWh} MWh/year (≈\${homesEquivalent} homes)\`;
-                                    labels[1].text = \`🌍 \${annualCarbonReductionTons} tons CO₂/year (≈\${treesEquivalent} trees)\`;
-                                    labels[2].text = \`📊 \${pueImprovement}% PUE improvement\`;
-                                    labels[3].text = 'Baseline for comparison';
-                                    
-                                    return labels;
-                                }
-                            }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(46, 125, 50, 0.9)',
-                            titleColor: '#fff',
-                            bodyColor: '#fff',
-                            callbacks: {
-                                label: function(context) {
-                                    const label = context.label;
-                                    if (label.includes('Energy')) {
-                                        return [\`Energy Savings: \${annualEnergySavingsMWh} MWh/year\`, \`Equivalent to \${homesEquivalent} homes powered\`];
-                                    } else if (label.includes('CO₂')) {
-                                        return [\`CO₂ Reduction: \${annualCarbonReductionTons} tons/year\`, \`Equivalent to \${carsEquivalent} cars removed\`, \`Or \${treesEquivalent} tree seedlings planted\`];
-                                    } else if (label.includes('PUE')) {
-                                        return [\`PUE Improvement: \${pueImprovement}%\`, 'More efficient power usage'];
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '🌱 Environmental Impact Overview',
+                                color: '#2E7D32',
+                                font: { size: 18, weight: 'bold' }
+                            },
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color: '#333',
+                                    font: { size: 11, weight: '600' },
+                                    usePointStyle: true,
+                                    padding: 15,
+                                    generateLabels: function(chart) {
+                                        try {
+                                            console.log('🏷️ Generating environmental chart labels...');
+                                            
+                                            // Use simpler approach to avoid Chart.js version issues
+                                            return [
+                                                {
+                                                    text: '⚡ ' + (annualEnergySavingsMWh || 0) + ' MWh/year (≈' + homesEquivalent + ' homes)',
+                                                    fillStyle: colors.environmental.gradient[0],
+                                                    strokeStyle: '#fff',
+                                                    lineWidth: 2,
+                                                    hidden: false,
+                                                    index: 0
+                                                },
+                                                {
+                                                    text: '🌍 ' + (annualCarbonReductionTons || 0) + ' tons CO₂/year (≈' + treesEquivalent + ' trees)',
+                                                    fillStyle: colors.environmental.gradient[1],
+                                                    strokeStyle: '#fff',
+                                                    lineWidth: 2,
+                                                    hidden: false,
+                                                    index: 1
+                                                },
+                                                {
+                                                    text: '📊 ' + (pueImprovement || 0) + '% PUE improvement',
+                                                    fillStyle: colors.environmental.gradient[2],
+                                                    strokeStyle: '#fff',
+                                                    lineWidth: 2,
+                                                    hidden: false,
+                                                    index: 2
+                                                },
+                                                {
+                                                    text: 'Baseline for comparison',
+                                                    fillStyle: colors.environmental.gradient[3],
+                                                    strokeStyle: '#fff',
+                                                    lineWidth: 2,
+                                                    hidden: false,
+                                                    index: 3
+                                                }
+                                            ];
+                                        } catch (error) {
+                                            console.error('❌ Error generating legend labels:', error);
+                                            // Fallback to basic labels
+                                            return [
+                                                { text: 'Energy Savings', fillStyle: colors.environmental.gradient[0] },
+                                                { text: 'CO₂ Reduction', fillStyle: colors.environmental.gradient[1] },
+                                                { text: 'PUE Improvement', fillStyle: colors.environmental.gradient[2] },
+                                                { text: 'Baseline', fillStyle: colors.environmental.gradient[3] }
+                                            ];
+                                        }
                                     }
-                                    return label;
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(46, 125, 50, 0.9)',
+                                titleColor: '#fff',
+                                bodyColor: '#fff',
+                                callbacks: {
+                                    label: function(context) {
+                                        try {
+                                            const label = context.label || '';
+                                            if (label.includes('Energy')) {
+                                                return ['Energy Savings: ' + (annualEnergySavingsMWh || 0) + ' MWh/year', 'Equivalent to ' + homesEquivalent + ' homes powered'];
+                                            } else if (label.includes('CO₂')) {
+                                                return ['CO₂ Reduction: ' + (annualCarbonReductionTons || 0) + ' tons/year', 'Equivalent to ' + carsEquivalent + ' cars removed', 'Or ' + treesEquivalent + ' tree seedlings planted'];
+                                            } else if (label.includes('PUE')) {
+                                                return ['PUE Improvement: ' + (pueImprovement || 0) + '%', 'More efficient power usage'];
+                                            }
+                                            return label;
+                                        } catch (error) {
+                                            console.error('❌ Error in tooltip callback:', error);
+                                            return 'Data unavailable';
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+                });
+                
+                console.log('✅ Environmental chart created successfully');
+                
+                // Force canvas visibility and size validation
+                if (ctx.canvas) {
+                    const canvas = ctx.canvas;
+                    console.log('📐 Canvas dimensions:', {
+                        width: canvas.width,
+                        height: canvas.height,
+                        clientWidth: canvas.clientWidth,
+                        clientHeight: canvas.clientHeight,
+                        style: {
+                            display: canvas.style.display,
+                            visibility: canvas.style.visibility,
+                            opacity: canvas.style.opacity
+                        }
+                    });
+                    
+                    // Ensure canvas is visible
+                    canvas.style.display = 'block';
+                    canvas.style.visibility = 'visible';
+                    canvas.style.opacity = '1';
+                    
+                    // Fix stretching in grid mode by limiting height
+                    if (mode === 'grid') {
+                        canvas.style.maxHeight = '300px';
+                        canvas.style.height = '300px';
+                        console.log('🔧 Applied grid mode height constraints to environmental chart');
+                    }
+                    
+                    // Force chart update and resize
+                    setTimeout(() => {
+                        if (chart && typeof chart.update === 'function') {
+                            chart.update();
+                            chart.resize();
+                            console.log('🔄 Chart forced update and resize completed');
+                        }
+                    }, 100);
                 }
-            });
+                
+                return chart;
+                
+            } catch (error) {
+                console.error('❌ Error creating environmental chart:', error);
+                console.error('Stack trace:', error.stack);
+                return null;
+            }
+        }
+        
+        /**
+         * Create fallback environmental chart when main chart fails
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {Object} data - TCO calculation results
+         * @return {Chart} Chart.js instance or null
+         */
+        function createFallbackEnvironmentalChart(ctx, data) {
+            console.log('🔧 Creating fallback environmental chart...');
+            
+            try {
+                // Simple bar chart fallback
+                const efficiency = data?.comparison?.efficiency || {};
+                const pueImprovement = efficiency.pueImprovement || 0;
+                const annualEnergySavingsMWh = efficiency.annualEnergySavingsMWh || 0;
+                const annualCarbonReductionTons = efficiency.annualCarbonReductionTons || 0;
+                
+                return new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['PUE Improvement (%)', 'Energy Savings (MWh)', 'CO₂ Reduction (tons)'],
+                        datasets: [{
+                            label: 'Environmental Impact',
+                            data: [pueImprovement, annualEnergySavingsMWh, annualCarbonReductionTons],
+                            backgroundColor: ['#2E7D32', '#4CAF50', '#66BB6A'],
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '🌱 Environmental Impact (Fallback View)',
+                                color: '#2E7D32'
+                            },
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    color: '#333'
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: '#333'
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('❌ Fallback environmental chart also failed:', error);
+                return null;
+            }
         }
         
         /**
@@ -1587,75 +2025,8 @@ function createServer(port) {
                 \`;
             }
             
-            // Add environmental impact section before results grid
-            const environmentalSection = 
-                '<div class="environmental-impact">' +
-                    '<div class="environmental-title">🌱 Environmental Impact</div>' +
-                    '<div class="environmental-subtitle">Sustainability Benefits & ESG Metrics</div>' +
-                    '<div class="environmental-grid">' +
-                        '<div class="environmental-card">' +
-                            '<span class="environmental-icon">⚡</span>' +
-                            '<div class="environmental-label">PUE Improvement</div>' +
-                            '<div class="environmental-value">' + pueImprovement + '%</div>' +
-                            '<div class="environmental-context">' +
-                                'Power Usage Effectiveness<br>' +
-                                ((1 - comparison.efficiency.pueImprovement/100) * 100).toFixed(1) + '% more efficient cooling' +
-                            '</div>' +
-                            '<div class="gauge-container">' +
-                                '<canvas id="pueGauge" width="200" height="100"></canvas>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="environmental-card">' +
-                            '<span class="environmental-icon">🏠</span>' +
-                            '<div class="environmental-label">Energy Savings</div>' +
-                            '<div class="environmental-value">' + annualEnergySavingsMWh + '</div>' +
-                            '<div class="environmental-context">' +
-                                'MWh saved annually<br>' +
-                                'Powers ~' + homesEquivalent + ' homes for a year' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="environmental-card">' +
-                            '<span class="environmental-icon">🌍</span>' +
-                            '<div class="environmental-label">CO₂ Reduction</div>' +
-                            '<div class="environmental-value">' + annualCarbonReductionTons + '</div>' +
-                            '<div class="environmental-context">' +
-                                'Tons CO₂ reduced annually<br>' +
-                                'Equal to ' + carsEquivalent + ' cars removed from roads' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="environmental-card">' +
-                            '<span class="environmental-icon">🌳</span>' +
-                            '<div class="environmental-label">Carbon Offset</div>' +
-                            '<div class="environmental-value">' + treesEquivalent + '</div>' +
-                            '<div class="environmental-context">' +
-                                'Tree seedlings equivalent<br>' +
-                                '10-year carbon sequestration' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div style="text-align: center; margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">' +
-                        '<h4 style="margin-bottom: 10px; color: #E8F5E8;">🎯 ESG Compliance Impact</h4>' +
-                        '<p style="font-size: 1rem; line-height: 1.6; opacity: 0.95;">' +
-                            'This immersion cooling solution directly contributes to <strong>Scope 2 emissions reduction</strong>, ' +
-                            'supporting corporate sustainability goals and ESG reporting requirements. ' +
-                            'The ' + pueImprovement + '% PUE improvement represents measurable progress toward ' +
-                            '<strong>carbon neutrality objectives</strong> and regulatory compliance.' +
-                        '</p>' +
-                    '</div>' +
-                '</div>';
-            
-            // Insert environmental section before results grid
-            const resultsGrid = document.getElementById('resultsGrid');
-            if (!resultsGrid) {
-                console.error('resultsGrid element not found');
-                return;
-            }
-            
-            try {
-                resultsGrid.insertAdjacentHTML('beforebegin', environmentalSection);
-            } catch (error) {
-                console.error('Error inserting environmental section:', error);
-            }
+            // Environmental Impact is now part of the Data Visualization charts
+            // No separate environmental section needed - it's shown via chart switcher
             
             // Update results grid with enhanced environmental integration
             try {
@@ -1732,11 +2103,43 @@ function createServer(port) {
                 console.error('Error creating PUE gauge:', error);
             }
             
-            // Initialize charts with default view
+            // Charts will be initialized separately after container is visible
+        }
+        
+        /**
+         * Fill results content without creating charts (for hidden containers)
+         * @param {Object} data - TCO calculation results from API
+         */
+        function displayResultsContent(data) {
+            // This is the same as displayResults but without chart initialization
+            displayResults(data);
+        }
+        
+        /**
+         * Initialize charts after container is visible
+         * @param {Object} data - TCO calculation results from API
+         */
+        function initializeCharts(data) {
+            console.log('🎯 Initializing charts with current view:', currentView);
+            
             try {
-                updateSingleChart(data, currentView);
+                // Ensure canvas is visible and ready
+                const canvas = document.getElementById('activeChart');
+                if (canvas) {
+                    console.log('📊 Canvas found, dimensions:', canvas.width, 'x', canvas.height);
+                    console.log('📊 Canvas visible:', canvas.offsetWidth > 0 && canvas.offsetHeight > 0);
+                    updateSingleChart(data, currentView);
+                    console.log('✅ Charts initialized successfully');
+                } else {
+                    console.error('❌ Canvas not found during initialization');
+                    // Retry after more delay
+                    setTimeout(() => {
+                        initializeCharts(data);
+                    }, 500);
+                }
             } catch (error) {
-                console.error('Error updating charts:', error);
+                console.error('❌ Error initializing charts:', error);
+                console.error('Stack trace:', error.stack);
             }
         }
         

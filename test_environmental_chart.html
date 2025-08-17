@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environmental Chart Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Environmental Chart Test</h1>
+    <button onclick="testEnvironmentalChart()">Test Environmental Chart</button>
+    <div id="results"></div>
+    <canvas id="testChart" width="400" height="300"></canvas>
+
+    <script>
+        async function testEnvironmentalChart() {
+            console.log('🧪 Testing Environmental Chart...');
+            
+            try {
+                // Simulate API call
+                const response = await fetch('http://localhost:4000/api/calculate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        airRacks: 10,
+                        airPowerPerRack: 20,
+                        airRackCost: 50000,
+                        airPUE: 1.8,
+                        immersionTanks: 9,
+                        immersionPowerPerTank: 23,
+                        immersionTankCost: 80000,
+                        immersionPUE: 1.1,
+                        analysisYears: 5,
+                        electricityPrice: 0.12,
+                        discountRate: 5,
+                        maintenanceCost: 3
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('API request failed');
+                }
+                
+                const data = await response.json();
+                console.log('📊 Received data:', data);
+                
+                // Test environmental chart creation
+                const canvas = document.getElementById('testChart');
+                const ctx = canvas.getContext('2d');
+                
+                const colors = {
+                    environmental: {
+                        gradient: ['#2E7D32', '#4CAF50', '#66BB6A', '#81C784']
+                    }
+                };
+                
+                const { comparison } = data;
+                const { pueImprovement, annualEnergySavingsMWh, annualCarbonReductionTons } = comparison.efficiency;
+                
+                console.log('🌱 Environmental data:', {
+                    pueImprovement,
+                    annualEnergySavingsMWh,
+                    annualCarbonReductionTons
+                });
+                
+                const chart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [
+                            'Energy Savings: ' + annualEnergySavingsMWh + ' MWh/year',
+                            'CO₂ Reduction: ' + annualCarbonReductionTons + ' tons/year',
+                            'PUE Improvement: ' + pueImprovement + '%',
+                            'Baseline Impact'
+                        ],
+                        datasets: [{
+                            data: [
+                                annualEnergySavingsMWh,
+                                annualCarbonReductionTons * 10,
+                                pueImprovement * 50,
+                                100
+                            ],
+                            backgroundColor: colors.environmental.gradient,
+                            borderColor: '#fff',
+                            borderWidth: 3,
+                            cutout: '50%'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '🌱 Environmental Impact Test',
+                                color: '#2E7D32'
+                            }
+                        }
+                    }
+                });
+                
+                document.getElementById('results').innerHTML = 
+                    '<h3>✅ Environmental Chart Created Successfully!</h3>' +
+                    '<p>PUE Improvement: ' + pueImprovement + '%</p>' +
+                    '<p>Energy Savings: ' + annualEnergySavingsMWh + ' MWh/year</p>' +
+                    '<p>CO₂ Reduction: ' + annualCarbonReductionTons + ' tons/year</p>';
+                
+                console.log('✅ Environmental chart test completed successfully');
+                
+            } catch (error) {
+                console.error('❌ Environmental chart test failed:', error);
+                document.getElementById('results').innerHTML = 
+                    '<h3 style="color: red;">❌ Test Failed</h3>' +
+                    '<p>Error: ' + error.message + '</p>';
+            }
+        }
+        
+        // Auto-run test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testEnvironmentalChart, 1000);
+        });
+    </script>
+</body>
+</html>

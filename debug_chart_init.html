@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chart Loading Debug</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .debug-section {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #testCanvas {
+            border: 2px solid #ccc;
+            background: white;
+        }
+        .log {
+            background: #f9f9f9;
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #007acc;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background: #005a99; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Chart Loading Debug Tool</h1>
+    
+    <div class="debug-section">
+        <h2>Environment Check</h2>
+        <div id="envCheck"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>Test Chart Canvas</h2>
+        <canvas id="testCanvas" width="600" height="400"></canvas>
+        <br>
+        <button onclick="testBasicChart()">Test Basic Chart</button>
+        <button onclick="testTCOChart()">Test TCO Chart</button>
+        <button onclick="clearChart()">Clear Chart</button>
+    </div>
+    
+    <div class="debug-section">
+        <h2>Real API Test</h2>
+        <button onclick="testRealCalculation()">Test Real Calculation + Chart</button>
+        <div id="apiResults"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>Debug Log</h2>
+        <div id="debugLog" class="log"></div>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <script>
+        let testChart = null;
+        
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('debugLog');
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            console.log(message);
+        }
+        
+        function checkEnvironment() {
+            const envDiv = document.getElementById('envCheck');
+            let status = '';
+            
+            status += `Chart.js loaded: ${typeof Chart !== 'undefined' ? '✅ YES' : '❌ NO'}\n`;
+            if (typeof Chart !== 'undefined') {
+                status += `Chart.js version: ${Chart.version || 'Unknown'}\n`;
+            }
+            
+            const canvas = document.getElementById('testCanvas');
+            status += `Canvas element: ${canvas ? '✅ Found' : '❌ Missing'}\n`;
+            
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                status += `Canvas context: ${ctx ? '✅ Available' : '❌ Failed'}\n`;
+                status += `Canvas dimensions: ${canvas.width}x${canvas.height}\n`;
+                status += `Canvas style: ${canvas.style.display || 'default'}\n`;
+            }
+            
+            envDiv.textContent = status;
+            log('Environment check completed');
+        }
+        
+        function testBasicChart() {
+            log('🧪 Testing basic chart creation...');
+            
+            const canvas = document.getElementById('testCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (testChart) {
+                log('Destroying previous chart');
+                testChart.destroy();
+            }
+            
+            try {
+                testChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Test 1', 'Test 2', 'Test 3'],
+                        datasets: [{
+                            label: 'Test Data',
+                            data: [10, 20, 30],
+                            backgroundColor: ['#ff6384', '#36a2eb', '#cc65fe']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+                log('✅ Basic chart created successfully');
+            } catch (error) {
+                log('❌ Basic chart creation failed: ' + error.message);
+                console.error(error);
+            }
+        }
+        
+        function testTCOChart() {
+            log('🧪 Testing TCO chart with sample data...');
+            
+            const canvas = document.getElementById('testCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (testChart) {
+                testChart.destroy();
+            }
+            
+            // Sample TCO data
+            const sampleData = {
+                airCooling: { costs: { capex: 500000, annualOpex: 120000, totalTCO: 1100000 } },
+                immersionCooling: { costs: { capex: 720000, annualOpex: 75000, totalTCO: 1095000 } },
+                parameters: { analysisYears: 5 }
+            };
+            
+            try {
+                testChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Air Cooling', 'Immersion Cooling'],
+                        datasets: [{
+                            label: 'CAPEX',
+                            data: [sampleData.airCooling.costs.capex, sampleData.immersionCooling.costs.capex],
+                            backgroundColor: '#ff6384',
+                            borderColor: '#ff6384',
+                            borderWidth: 2
+                        }, {
+                            label: 'OPEX (5 years)',
+                            data: [
+                                sampleData.airCooling.costs.annualOpex * 5, 
+                                sampleData.immersionCooling.costs.annualOpex * 5
+                            ],
+                            backgroundColor: '#36a2eb',
+                            borderColor: '#36a2eb',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return '$' + (value / 1000) + 'k';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                log('✅ TCO chart created successfully');
+            } catch (error) {
+                log('❌ TCO chart creation failed: ' + error.message);
+                console.error(error);
+            }
+        }
+        
+        function clearChart() {
+            if (testChart) {
+                testChart.destroy();
+                testChart = null;
+                log('Chart cleared');
+            }
+        }
+        
+        async function testRealCalculation() {
+            log('🌐 Testing real API calculation...');
+            
+            const apiDiv = document.getElementById('apiResults');
+            apiDiv.innerHTML = 'Loading...';
+            
+            try {
+                const response = await fetch('/api/calculate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        airRacks: 10,
+                        airPowerPerRack: 20,
+                        airRackCost: 50000,
+                        airPUE: 1.8,
+                        immersionTanks: 9,
+                        immersionPowerPerTank: 23,
+                        immersionTankCost: 80000,
+                        immersionPUE: 1.1,
+                        analysisYears: 5,
+                        electricityPrice: 0.12,
+                        discountRate: 5,
+                        maintenanceCost: 3
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('API responded with status: ' + response.status);
+                }
+                
+                const data = await response.json();
+                log('✅ API call successful');
+                log('Total savings: $' + data.comparison.savings.totalSavings.toLocaleString());
+                
+                apiDiv.innerHTML = `
+                    <strong>API Response:</strong><br>
+                    Total Savings: $${data.comparison.savings.totalSavings.toLocaleString()}<br>
+                    ROI: ${data.comparison.savings.roiPercent}%<br>
+                    Payback: ${data.comparison.savings.paybackYears} years<br>
+                    <button onclick="createChartFromApiData()">Create Chart from API Data</button>
+                `;
+                
+                // Store data globally for chart creation
+                window.apiData = data;
+                
+            } catch (error) {
+                log('❌ API test failed: ' + error.message);
+                apiDiv.innerHTML = 'API Error: ' + error.message;
+            }
+        }
+        
+        function createChartFromApiData() {
+            if (!window.apiData) {
+                log('❌ No API data available');
+                return;
+            }
+            
+            log('📊 Creating chart from real API data...');
+            
+            const canvas = document.getElementById('testCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (testChart) {
+                testChart.destroy();
+            }
+            
+            const data = window.apiData;
+            
+            try {
+                testChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Air Cooling', 'Immersion Cooling'],
+                        datasets: [{
+                            label: 'CAPEX',
+                            data: [data.airCooling.costs.capex, data.immersionCooling.costs.capex],
+                            backgroundColor: '#ff6384',
+                            borderColor: '#ff6384',
+                            borderWidth: 2
+                        }, {
+                            label: 'OPEX (' + data.parameters.analysisYears + ' years)',
+                            data: [
+                                data.airCooling.costs.annualOpex * data.parameters.analysisYears,
+                                data.immersionCooling.costs.annualOpex * data.parameters.analysisYears
+                            ],
+                            backgroundColor: '#36a2eb',
+                            borderColor: '#36a2eb',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'TCO Comparison (Real API Data)'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return '$' + (value / 1000).toFixed(0) + 'k';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                log('✅ Chart from API data created successfully');
+            } catch (error) {
+                log('❌ Chart from API data failed: ' + error.message);
+                console.error(error);
+            }
+        }
+        
+        function clearLog() {
+            document.getElementById('debugLog').textContent = '';
+        }
+        
+        // Initialize on load
+        window.addEventListener('load', () => {
+            checkEnvironment();
+            log('🚀 Debug tool loaded');
+        });
+    </script>
+</body>
+</html>
