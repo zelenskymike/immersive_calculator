@@ -81,6 +81,17 @@
                 <div class="input-section">
                     <h3>💰 Financial Parameters</h3>
                     <div class="input-group">
+                        <label for="loadScenario">Load Scenario</label>
+                        <select id="loadScenario">
+                            <option value="constant">Constant Load (24/7)</option>
+                            <option value="business">Business Hours</option>
+                            <option value="ai_training">AI/ML Training</option>
+                            <option value="batch">Batch Processing</option>
+                            <option value="web_hosting">Web Hosting</option>
+                        </select>
+                        <small id="scenarioDescription" style="color: var(--gray); display: block; margin-top: 0.5rem;">Steady workload throughout the day</small>
+                    </div>
+                    <div class="input-group">
                         <label for="analysisYears">Analysis Period (Years)</label>
                         <input type="number" id="analysisYears" value="5" min="1" max="10">
                     </div>
@@ -146,10 +157,10 @@
                 <!-- Charts Container -->
                 <div class="charts-container" id="chartsContainer" style="display: none;">
                     <div class="chart-tabs">
-                        <button class="chart-tab active" onclick="switchChart('tco')">TCO Comparison</button>
-                        <button class="chart-tab" onclick="switchChart('breakdown')">Cost Breakdown</button>
-                        <button class="chart-tab" onclick="switchChart('timeline')">Savings Timeline</button>
-                        <button class="chart-tab" onclick="switchChart('environmental')">Environmental Impact</button>
+                        <button class="chart-tab active" onclick="switchChart(event, 'tco')">TCO Comparison</button>
+                        <button class="chart-tab" onclick="switchChart(event, 'breakdown')">Cost Breakdown</button>
+                        <button class="chart-tab" onclick="switchChart(event, 'timeline')">Savings Timeline</button>
+                        <button class="chart-tab" onclick="switchChart(event, 'environmental')">Environmental Impact</button>
                     </div>
                     <div class="chart-content">
                         <canvas id="chartCanvas" width="600" height="400"></canvas>

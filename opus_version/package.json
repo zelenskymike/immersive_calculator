@@ -1,0 +1,42 @@
+{
+  "name": "immersion-cooling-tco-calculator",
+  "version": "2.0.0",
+  "description": "Advanced Total Cost of Ownership Calculator for Data Center Cooling Solutions",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "PORT=5001 node server.js",
+    "docker:build": "docker build -t immersion-calculator:v2.0 .",
+    "docker:run": "docker run -p 5000:5000 immersion-calculator:v2.0",
+    "docker:compose": "docker-compose up",
+    "docker:compose:build": "docker-compose up --build",
+    "docker:compose:down": "docker-compose down",
+    "test": "echo \"Tests coming soon\" && exit 0"
+  },
+  "keywords": [
+    "tco",
+    "calculator",
+    "immersion-cooling",
+    "data-center",
+    "energy-efficiency",
+    "sustainability",
+    "roi",
+    "capex",
+    "opex"
+  ],
+  "author": "TCO Calculator Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/immersion-calculator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/immersion-calculator/issues"
+  },
+  "homepage": "https://github.com/yourusername/immersion-calculator#readme"
+}

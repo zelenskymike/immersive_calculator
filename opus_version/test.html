@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCO Calculator Test</title>
+</head>
+<body>
+    <h1>TCO Calculator Test Page</h1>
+    <p>Testing calculator functionality...</p>
+    
+    <button onclick="testCalculator()">Test Calculator</button>
+    <div id="result"></div>
+
+    <script>
+        function testCalculator() {
+            // Test the calculation
+            const testData = {
+                airRacks: 10,
+                airPowerPerRack: 10,
+                airPUE: 1.7,
+                immersionTanks: 5,
+                immersionPowerPerTank: 20,
+                immersionPUE: 1.03,
+                analysisYears: 5,
+                electricityPrice: 0.10,
+                discountRate: 5,
+                loadScenario: 'constant'
+            };
+            
+            console.log('Test data:', testData);
+            
+            // Simple calculation
+            const airPower = testData.airRacks * testData.airPowerPerRack * testData.airPUE;
+            const immersionPower = testData.immersionTanks * testData.immersionPowerPerTank * testData.immersionPUE;
+            
+            document.getElementById('result').innerHTML = `
+                <h3>Test Results:</h3>
+                <p>Air Cooling Power: ${airPower} kW</p>
+                <p>Immersion Cooling Power: ${immersionPower} kW</p>
+                <p>Power Savings: ${(airPower - immersionPower).toFixed(2)} kW</p>
+            `;
+        }
+    </script>
+</body>
+</html>
